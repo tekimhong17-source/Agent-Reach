@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CardVault — scan &amp; secure your cards</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <!-- OCR engine (runs fully in the browser; images never leave the device) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>💳 CardVault</h1>
+    <div id="user-box" class="hidden">
+      <span id="plan-badge" class="badge"></span>
+      <span id="user-email"></span>
+      <button id="logout-btn" class="ghost">Log out</button>
+    </div>
+  </header>
+
+  <!-- Auth -->
+  <section id="auth-view" class="card-panel">
+    <h2>Sign in</h2>
+    <p class="muted">Your cards are encrypted in your browser with a passphrase only you know.
+       The server never sees a card number.</p>
+    <form id="auth-form">
+      <input type="email" id="auth-email" placeholder="Email" required>
+      <input type="password" id="auth-password" placeholder="Password (8+ characters)" minlength="8" required>
+      <div class="row">
+        <button type="submit" data-mode="login">Log in</button>
+        <button type="submit" data-mode="register" class="secondary">Create account</button>
+      </div>
+    </form>
+    <p id="auth-error" class="error"></p>
+  </section>
+
+  <!-- Vault -->
+  <section id="vault-view" class="hidden">
+    <div class="row space-between">
+      <h2>Your vault</h2>
+      <button id="scan-btn">＋ Scan a card</button>
+    </div>
+    <p id="quota-note" class="muted"></p>
+    <ul id="card-list"></ul>
+
+    <div id="paywall" class="card-panel hidden">
+      <h3>Upgrade to Pro</h3>
+      <p>The free plan stores up to <span id="free-limit">2</span> cards.
+         Pro gives you <strong>unlimited encrypted cards</strong>, on every device.</p>
+      <button id="upgrade-btn">Upgrade with Stripe</button>
+      <p id="billing-error" class="error"></p>
+    </div>
+  </section>
+
+  <!-- Scanner modal -->
+  <dialog id="scan-modal">
+    <h3>Scan your card</h3>
+    <p class="muted">Point the camera at the front of the card. Everything is processed on this device.</p>
+    <video id="camera" autoplay playsinline muted></video>
+    <canvas id="capture-canvas" class="hidden"></canvas>
+    <div class="row">
+      <button id="capture-btn">Capture &amp; read</button>
+      <button id="manual-btn" class="secondary">Enter manually</button>
+      <button id="close-scan-btn" class="ghost">Cancel</button>
+    </div>
+    <p id="scan-status" class="muted"></p>
+
+    <form id="card-form" class="hidden">
+      <input type="text" id="card-label" placeholder="Label (e.g. Personal Visa)" maxlength="64" required>
+      <input type="text" id="card-number" placeholder="Card number" inputmode="numeric" autocomplete="off" required>
+      <div class="row">
+        <input type="text" id="card-expiry" placeholder="MM/YY" maxlength="5" autocomplete="off">
+        <input type="text" id="card-holder" placeholder="Name on card" maxlength="64" autocomplete="off">
+      </div>
+      <p id="card-meta" class="muted"></p>
+      <input type="password" id="vault-passphrase" placeholder="Vault passphrase (encrypts this card)" minlength="8" required>
+      <button type="submit">Encrypt &amp; save</button>
+      <p id="card-error" class="error"></p>
+    </form>
+  </dialog>
+
+  <!-- Reveal modal -->
+  <dialog id="reveal-modal">
+    <h3 id="reveal-title"></h3>
+    <form id="reveal-form">
+      <input type="password" id="reveal-passphrase" placeholder="Vault passphrase" required>
+      <div class="row">
+        <button type="submit">Decrypt</button>
+        <button type="button" id="close-reveal-btn" class="ghost">Close</button>
+      </div>
+    </form>
+    <pre id="reveal-output" class="hidden"></pre>
+    <p id="reveal-error" class="error"></p>
+  </dialog>
+
+  <footer>
+    <p class="muted">CardVault encrypts card data client-side (AES-256-GCM). Losing your passphrase means
+       losing access to stored cards — there is no recovery.</p>
+  </footer>
+
+  <script src="/static/crypto.js"></script>
+  <script src="/static/scanner.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
