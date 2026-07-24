@@ -180,6 +180,21 @@ def test_checkout_unconfigured_returns_503(client):
     assert res.status_code == 503
 
 
+def test_portal_unconfigured_returns_503(client):
+    token = register(client)
+    res = client.post("/api/billing/portal", headers=auth(token))
+    assert res.status_code == 503
+
+
+def test_portal_without_billing_profile_returns_400(client, monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
+    monkeypatch.setenv("STRIPE_PRICE_ID", "price_dummy")
+    token = register(client)
+    res = client.post("/api/billing/portal", headers=auth(token))
+    assert res.status_code == 400
+    assert "billing profile" in res.json()["detail"]
+
+
 def test_webhook_without_secret_rejected(client):
     res = client.post(
         "/api/billing/webhook", content=b"{}", headers={"stripe-signature": "bogus"}

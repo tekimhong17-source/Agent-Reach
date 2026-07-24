@@ -14,6 +14,7 @@
     <div id="user-box" class="hidden">
       <span id="plan-badge" class="badge"></span>
       <span id="user-email"></span>
+      <button id="billing-btn" class="ghost hidden">Manage billing</button>
       <button id="logout-btn" class="ghost">Log out</button>
     </div>
   </header>
@@ -36,6 +37,8 @@
 
   <!-- Vault -->
   <section id="vault-view" class="hidden">
+    <p id="upgrade-pending" class="card-panel hidden">✨ Payment received — finalizing your
+       upgrade. This usually takes a few seconds…</p>
     <div class="row space-between">
       <h2>Your vault</h2>
       <button id="scan-btn">＋ Scan a card</button>
@@ -44,10 +47,27 @@
     <ul id="card-list"></ul>
 
     <div id="paywall" class="card-panel hidden">
-      <h3>Upgrade to Pro</h3>
-      <p>The free plan stores up to <span id="free-limit">2</span> cards.
-         Pro gives you <strong>unlimited encrypted cards</strong>, on every device.</p>
-      <button id="upgrade-btn">Upgrade with Stripe</button>
+      <h3 id="paywall-headline">Your next card won't fit in the free vault.</h3>
+      <p>You've already secured <span class="pw-limit">2</span> cards, so you know how this
+         works: scan, encrypt, done. Pro just removes the ceiling — every card you own, in the
+         same vault, encrypted the same way. Nothing about the security changes. Only the
+         limit does.</p>
+      <ul class="pw-benefits">
+        <li><strong>Unlimited cards</strong> — your debit card, the backup credit card, the
+            business card, the one that only exists for subscriptions. All of them, one
+            passphrase.</li>
+        <li><strong>One vault for your whole wallet</strong> — stop deciding which
+            <span class="pw-limit">2</span> cards deserve protection. That's a choice you
+            shouldn't have to make.</li>
+        <li><strong>The same zero-knowledge encryption</strong> — Pro doesn't unlock your data
+            for us. We still can't read a single card, and we never will be able to.</li>
+      </ul>
+      <p class="pw-price">Cancel anytime — your first <span class="pw-limit">2</span> cards
+         stay free forever.</p>
+      <button id="upgrade-btn">Unlock unlimited cards</button>
+      <p class="muted pw-smallprint">Canceling never deletes your data. If you downgrade, your
+         existing cards stay encrypted and readable — you just can't add more than
+         <span class="pw-limit">2</span>. No hostage-taking.</p>
       <p id="billing-error" class="error"></p>
     </div>
   </section>

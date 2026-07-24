@@ -49,6 +49,16 @@ def create_checkout_session(user: dict[str, Any]) -> str:
     return session.url
 
 
+def create_portal_session(customer_id: str) -> str:
+    """Create a Stripe customer portal session (self-serve cancel/update card)."""
+    stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
+    session = stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=f"{_base_url()}/",
+    )
+    return session.url
+
+
 def handle_webhook(payload: bytes, signature: str) -> dict[str, str]:
     """Verify and process a Stripe webhook. Raises ValueError on bad signature."""
     secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
