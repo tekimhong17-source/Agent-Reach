@@ -53,8 +53,16 @@
     $("user-email").textContent = me.email;
     $("plan-badge").textContent = me.plan === "pro" ? "PRO" : "FREE";
     $("plan-badge").className = `badge ${me.plan}`;
-    $("free-limit").textContent = me.free_limit;
+    renderPaywallCopy(me.free_limit);
     await refreshCards();
+  }
+
+  function renderPaywallCopy(limit) {
+    const ordinals = ["first", "second", "third", "fourth", "fifth",
+      "sixth", "seventh", "eighth", "ninth", "tenth"];
+    const next = ordinals[limit] || `${limit + 1}th`;
+    $("paywall-headline").textContent = `Your ${next} card won't fit in the free vault.`;
+    document.querySelectorAll(".pw-limit").forEach((el) => (el.textContent = limit));
   }
 
   // ---------- vault ----------
