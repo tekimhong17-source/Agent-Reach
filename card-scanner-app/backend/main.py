@@ -164,6 +164,15 @@ def checkout(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
     return {"url": billing.create_checkout_session(user)}
 
 
+@app.post("/api/billing/portal")
+def billing_portal(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
+    if not billing.is_configured():
+        raise HTTPException(status_code=503, detail="Billing is not configured")
+    if not user.get("stripe_customer_id"):
+        raise HTTPException(status_code=400, detail="No billing profile for this account")
+    return {"url": billing.create_portal_session(user["stripe_customer_id"])}
+
+
 @app.post("/api/billing/webhook")
 async def stripe_webhook(request: Request) -> dict[str, str]:
     payload = await request.body()

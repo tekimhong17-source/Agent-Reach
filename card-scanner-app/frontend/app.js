@@ -53,6 +53,7 @@
     $("user-email").textContent = me.email;
     $("plan-badge").textContent = me.plan === "pro" ? "PRO" : "FREE";
     $("plan-badge").className = `badge ${me.plan}`;
+    $("billing-btn").classList.toggle("hidden", me.plan !== "pro");
     renderPaywallCopy(me.free_limit);
     await refreshCards();
   }
@@ -231,14 +232,40 @@
 
   $("close-reveal-btn").addEventListener("click", () => $("reveal-modal").close());
 
-  // ---------- boot ----------
-  if (new URLSearchParams(location.search).get("upgraded") === "1") {
-    history.replaceState(null, "", "/");
+  $("billing-btn").addEventListener("click", async () => {
+    try {
+      const { url } = await api("/api/billing/portal", { method: "POST" });
+      location.href = url;
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  // After Stripe Checkout redirects back, the webhook that flips the plan to
+  // "pro" can lag by a few seconds — poll /api/me until it lands.
+  async function waitForUpgrade() {
+    $("upgrade-pending").classList.remove("hidden");
+    for (let i = 0; i < 15 && me && me.plan !== "pro"; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try { await enterVault(); } catch (_) { break; }
+    }
+    $("upgrade-pending").classList.add("hidden");
+    if (me && me.plan !== "pro") {
+      alert("Your payment went through, but the upgrade hasn't landed yet. It will apply automatically — try refreshing in a minute.");
+    }
   }
+
+  // ---------- boot ----------
+  const justUpgraded = new URLSearchParams(location.search).get("upgraded") === "1";
+  if (justUpgraded) history.replaceState(null, "", "/");
   if (token) {
-    enterVault().catch(() => {
-      token = null;
-      sessionStorage.removeItem("cardvault_token");
-    });
+    enterVault()
+      .then(() => {
+        if (justUpgraded && me.plan !== "pro") return waitForUpgrade();
+      })
+      .catch(() => {
+        token = null;
+        sessionStorage.removeItem("cardvault_token");
+      });
   }
 })();

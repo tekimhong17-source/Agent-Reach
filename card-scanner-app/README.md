@@ -103,4 +103,9 @@ isolation, the plaintext-PAN rejection safety net, free-limit enforcement
 | POST | `/api/cards` | Store an encrypted card (402 at free limit) |
 | DELETE | `/api/cards/{id}` | Delete a card |
 | POST | `/api/billing/checkout` | Start Stripe Checkout for Pro |
+| POST | `/api/billing/portal` | Open the Stripe customer portal (Pro self-serve cancel) |
 | POST | `/api/billing/webhook` | Stripe webhook (signature-verified) |
+
+Enable the customer portal in Stripe (Settings → Billing → Customer portal) so
+the "Manage billing" button works — cancellations and card updates are then
+fully self-serve.
