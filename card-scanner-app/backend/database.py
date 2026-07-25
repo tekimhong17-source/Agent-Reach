@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     plan TEXT NOT NULL DEFAULT 'free',
-    stripe_customer_id TEXT,
+    subscription_id TEXT,
     created_at REAL NOT NULL
 );
 
@@ -92,21 +92,21 @@ def get_user(user_id: int) -> dict[str, Any] | None:
         return dict(row) if row else None
 
 
-def set_plan(user_id: int, plan: str, stripe_customer_id: str | None = None) -> None:
+def set_plan(user_id: int, plan: str, subscription_id: str | None = None) -> None:
     with connect() as conn:
-        if stripe_customer_id is not None:
+        if subscription_id is not None:
             conn.execute(
-                "UPDATE users SET plan = ?, stripe_customer_id = ? WHERE id = ?",
-                (plan, stripe_customer_id, user_id),
+                "UPDATE users SET plan = ?, subscription_id = ? WHERE id = ?",
+                (plan, subscription_id, user_id),
             )
         else:
             conn.execute("UPDATE users SET plan = ? WHERE id = ?", (plan, user_id))
 
 
-def get_user_by_stripe_customer(customer_id: str) -> dict[str, Any] | None:
+def get_user_by_subscription(subscription_id: str) -> dict[str, Any] | None:
     with connect() as conn:
         row = conn.execute(
-            "SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,)
+            "SELECT * FROM users WHERE subscription_id = ?", (subscription_id,)
         ).fetchone()
         return dict(row) if row else None
 

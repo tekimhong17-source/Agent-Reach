@@ -159,22 +159,32 @@ def checkout(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
     if not billing.is_configured():
         raise HTTPException(
             status_code=503,
-            detail="Billing is not configured (set STRIPE_SECRET_KEY and STRIPE_PRICE_ID)",
+            detail="Billing is not configured (set LEMONSQUEEZY_API_KEY, "
+            "LEMONSQUEEZY_STORE_ID and LEMONSQUEEZY_VARIANT_ID)",
         )
     return {"url": billing.create_checkout_session(user)}
 
 
+@app.post("/api/billing/portal")
+def billing_portal(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
+    if not billing.is_configured():
+        raise HTTPException(status_code=503, detail="Billing is not configured")
+    if not user.get("subscription_id"):
+        raise HTTPException(status_code=400, detail="No billing profile for this account")
+    return {"url": billing.create_portal_session(user["subscription_id"])}
+
+
 @app.post("/api/billing/webhook")
-async def stripe_webhook(request: Request) -> dict[str, str]:
+async def billing_webhook(request: Request) -> dict[str, str]:
     payload = await request.body()
-    signature = request.headers.get("stripe-signature", "")
+    signature = request.headers.get("x-signature", "")
     try:
         return billing.handle_webhook(payload, signature)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-# Dev-only shortcut so the paywall can be exercised without Stripe keys.
+# Dev-only shortcut so the paywall can be exercised without billing keys.
 if os.environ.get("CARDVAULT_DEV") == "1":
 
     @app.post("/api/billing/dev-upgrade")
