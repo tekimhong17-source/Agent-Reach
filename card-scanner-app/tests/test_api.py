@@ -4,6 +4,7 @@ Run from card-scanner-app/:  pytest tests/ -v
 """
 
 import importlib
+import json
 import os
 import sys
 
@@ -180,6 +181,24 @@ def test_checkout_unconfigured_returns_503(client):
     assert res.status_code == 503
 
 
+def _configure_billing(monkeypatch):
+    monkeypatch.setenv("LEMONSQUEEZY_API_KEY", "lsq_test_dummy")
+    monkeypatch.setenv("LEMONSQUEEZY_STORE_ID", "1")
+    monkeypatch.setenv("LEMONSQUEEZY_VARIANT_ID", "1")
+    monkeypatch.setenv("LEMONSQUEEZY_WEBHOOK_SECRET", "whsecret")
+
+
+def _signed_webhook(client, event: dict):
+    import hashlib
+    import hmac as hmac_mod
+
+    payload = json.dumps(event).encode()
+    signature = hmac_mod.new(b"whsecret", payload, hashlib.sha256).hexdigest()
+    return client.post(
+        "/api/billing/webhook", content=payload, headers={"x-signature": signature}
+    )
+
+
 def test_portal_unconfigured_returns_503(client):
     token = register(client)
     res = client.post("/api/billing/portal", headers=auth(token))
@@ -187,8 +206,7 @@ def test_portal_unconfigured_returns_503(client):
 
 
 def test_portal_without_billing_profile_returns_400(client, monkeypatch):
-    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
-    monkeypatch.setenv("STRIPE_PRICE_ID", "price_dummy")
+    _configure_billing(monkeypatch)
     token = register(client)
     res = client.post("/api/billing/portal", headers=auth(token))
     assert res.status_code == 400
@@ -197,6 +215,44 @@ def test_portal_without_billing_profile_returns_400(client, monkeypatch):
 
 def test_webhook_without_secret_rejected(client):
     res = client.post(
-        "/api/billing/webhook", content=b"{}", headers={"stripe-signature": "bogus"}
+        "/api/billing/webhook", content=b"{}", headers={"x-signature": "bogus"}
     )
     assert res.status_code == 400
+
+
+def test_webhook_bad_signature_rejected(client, monkeypatch):
+    _configure_billing(monkeypatch)
+    res = client.post(
+        "/api/billing/webhook", content=b"{}", headers={"x-signature": "deadbeef"}
+    )
+    assert res.status_code == 400
+    assert "signature" in res.json()["detail"]
+
+
+def test_webhook_subscription_lifecycle(client, monkeypatch):
+    _configure_billing(monkeypatch)
+    token = register(client)
+
+    # subscription_created with our user_id in custom_data → Pro
+    res = _signed_webhook(client, {
+        "meta": {"event_name": "subscription_created", "custom_data": {"user_id": "1"}},
+        "data": {"type": "subscriptions", "id": "sub_42", "attributes": {}},
+    })
+    assert res.status_code == 200 and res.json()["status"] == "upgraded"
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "pro"
+
+    # subscription_cancelled is ignored: paid through the period, access stays
+    res = _signed_webhook(client, {
+        "meta": {"event_name": "subscription_cancelled"},
+        "data": {"type": "subscriptions", "id": "sub_42", "attributes": {}},
+    })
+    assert res.json()["status"] == "ignored"
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "pro"
+
+    # subscription_expired at period end → back to free
+    res = _signed_webhook(client, {
+        "meta": {"event_name": "subscription_expired"},
+        "data": {"type": "subscriptions", "id": "sub_42", "attributes": {}},
+    })
+    assert res.json()["status"] == "downgraded"
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "free"

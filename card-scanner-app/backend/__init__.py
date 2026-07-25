@@ -1,1 +1,1 @@
-"""CardVault backend — FastAPI app with auth, encrypted card storage, and Stripe paywall."""
+"""CardVault backend — FastAPI app with auth, encrypted card storage, and a subscription paywall."""

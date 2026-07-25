@@ -241,7 +241,7 @@
     }
   });
 
-  // After Stripe Checkout redirects back, the webhook that flips the plan to
+  // After checkout redirects back, the webhook that flips the plan to
   // "pro" can lag by a few seconds — poll /api/me until it lands.
   async function waitForUpgrade() {
     $("upgrade-pending").classList.remove("hidden");
