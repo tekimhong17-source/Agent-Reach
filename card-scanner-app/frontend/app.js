@@ -45,14 +45,18 @@
     location.reload();
   });
 
+  const isPro = (plan) => plan === "pro" || plan === "lifetime";
+
   async function enterVault() {
     me = await api("/api/me");
     $("auth-view").classList.add("hidden");
     $("vault-view").classList.remove("hidden");
     $("user-box").classList.remove("hidden");
     $("user-email").textContent = me.email;
-    $("plan-badge").textContent = me.plan === "pro" ? "PRO" : "FREE";
+    $("plan-badge").textContent =
+      me.plan === "lifetime" ? "LIFETIME" : me.plan === "pro" ? "PRO" : "FREE";
     $("plan-badge").className = `badge ${me.plan}`;
+    // Only subscriptions have a customer portal; lifetime has nothing to manage.
     $("billing-btn").classList.toggle("hidden", me.plan !== "pro");
     renderPaywallCopy(me.free_limit);
     await refreshCards();
@@ -90,31 +94,35 @@
       list.appendChild(li);
     }
 
-    const atLimit = me.plan !== "pro" && cards.length >= me.free_limit;
+    const atLimit = !isPro(me.plan) && cards.length >= me.free_limit;
     $("paywall").classList.toggle("hidden", !atLimit);
-    $("quota-note").textContent =
-      me.plan === "pro"
-        ? "Pro plan — unlimited cards."
-        : `${cards.length}/${me.free_limit} cards used on the free plan.`;
+    $("quota-note").textContent = isPro(me.plan)
+      ? `${me.plan === "lifetime" ? "Lifetime" : "Pro"} plan — unlimited cards.`
+      : `${cards.length}/${me.free_limit} cards used on the free plan.`;
   }
 
   // ---------- paywall ----------
-  $("upgrade-btn").addEventListener("click", async () => {
+  async function startCheckout(tier) {
     $("billing-error").textContent = "";
     try {
-      const { url } = await api("/api/billing/checkout", { method: "POST" });
+      const { url } = await api("/api/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({ tier }),
+      });
       location.href = url;
     } catch (err) {
       $("billing-error").textContent = err.message;
     }
-  });
+  }
+  $("upgrade-btn").addEventListener("click", () => startCheckout("subscription"));
+  $("lifetime-btn").addEventListener("click", () => startCheckout("lifetime"));
 
   // ---------- scanning ----------
   const modal = $("scan-modal");
   let scanned = { number: null };
 
   $("scan-btn").addEventListener("click", async () => {
-    if (me.plan !== "pro" && me.cards >= me.free_limit) {
+    if (!isPro(me.plan) && me.cards >= me.free_limit) {
       $("paywall").classList.remove("hidden");
       $("paywall").scrollIntoView({ behavior: "smooth" });
       return;
@@ -245,12 +253,12 @@
   // "pro" can lag by a few seconds — poll /api/me until it lands.
   async function waitForUpgrade() {
     $("upgrade-pending").classList.remove("hidden");
-    for (let i = 0; i < 15 && me && me.plan !== "pro"; i++) {
+    for (let i = 0; i < 15 && me && !isPro(me.plan); i++) {
       await new Promise((r) => setTimeout(r, 2000));
       try { await enterVault(); } catch (_) { break; }
     }
     $("upgrade-pending").classList.add("hidden");
-    if (me && me.plan !== "pro") {
+    if (me && !isPro(me.plan)) {
       alert("Your payment went through, but the upgrade hasn't landed yet. It will apply automatically — try refreshing in a minute.");
     }
   }
@@ -261,7 +269,7 @@
   if (token) {
     enterVault()
       .then(() => {
-        if (justUpgraded && me.plan !== "pro") return waitForUpgrade();
+        if (justUpgraded && !isPro(me.plan)) return waitForUpgrade();
       })
       .catch(() => {
         token = null;

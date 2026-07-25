@@ -82,6 +82,7 @@ button.danger { color: var(--danger); }
   margin-right: 8px;
 }
 .badge.pro { background: var(--accent-2); color: #06281c; }
+.badge.lifetime { background: #f5c04e; color: #3a2a05; }
 
 #user-box { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
 

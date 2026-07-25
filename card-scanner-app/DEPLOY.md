@@ -24,6 +24,7 @@ way; the invariants are at the bottom.
    | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
    | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
    | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the Pro subscription |
+   | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
    | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
 
    Do **not** set `CARDVAULT_DEV` in production — it exposes a free-upgrade
@@ -45,7 +46,8 @@ way; the invariants are at the bottom.
 ## 3. Wire Lemon Squeezy to the live domain
 
 1. Settings → Webhooks → endpoint `https://trycardvault.com/api/billing/webhook`,
-   events `subscription_created` + `subscription_expired`, signing secret =
+   events `subscription_created` + `subscription_expired` + `order_created`,
+   signing secret =
    the `LEMONSQUEEZY_WEBHOOK_SECRET` you set above.
 2. Keep the store in **test mode** until the launch checklist passes.
 
