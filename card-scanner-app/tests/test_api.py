@@ -185,6 +185,7 @@ def _configure_billing(monkeypatch):
     monkeypatch.setenv("LEMONSQUEEZY_API_KEY", "lsq_test_dummy")
     monkeypatch.setenv("LEMONSQUEEZY_STORE_ID", "1")
     monkeypatch.setenv("LEMONSQUEEZY_VARIANT_ID", "1")
+    monkeypatch.setenv("LEMONSQUEEZY_LIFETIME_VARIANT_ID", "99")
     monkeypatch.setenv("LEMONSQUEEZY_WEBHOOK_SECRET", "whsecret")
 
 
@@ -256,3 +257,48 @@ def test_webhook_subscription_lifecycle(client, monkeypatch):
     })
     assert res.json()["status"] == "downgraded"
     assert client.get("/api/me", headers=auth(token)).json()["plan"] == "free"
+
+
+def test_lifetime_order_grants_lifetime_plan(client, monkeypatch):
+    _configure_billing(monkeypatch)
+    token = register(client)
+
+    res = _signed_webhook(client, {
+        "meta": {"event_name": "order_created", "custom_data": {"user_id": "1"}},
+        "data": {
+            "type": "orders", "id": "777",
+            "attributes": {"first_order_item": {"variant_id": 99}},
+        },
+    })
+    assert res.status_code == 200 and res.json()["status"] == "lifetime"
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "lifetime"
+
+    # lifetime bypasses the free limit
+    for i in range(3):
+        res = client.post(
+            "/api/cards", json=dict(ENCRYPTED_CARD, label=f"Card {i}"), headers=auth(token)
+        )
+        assert res.status_code == 201
+
+
+def test_subscription_first_invoice_order_is_ignored(client, monkeypatch):
+    _configure_billing(monkeypatch)
+    token = register(client)
+
+    res = _signed_webhook(client, {
+        "meta": {"event_name": "order_created", "custom_data": {"user_id": "1"}},
+        "data": {
+            "type": "orders", "id": "778",
+            "attributes": {"first_order_item": {"variant_id": 1}},
+        },
+    })
+    assert res.json()["status"] == "ignored"
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "free"
+
+
+def test_checkout_invalid_tier_rejected(client):
+    token = register(client)
+    res = client.post(
+        "/api/billing/checkout", json={"tier": "weekly"}, headers=auth(token)
+    )
+    assert res.status_code == 422

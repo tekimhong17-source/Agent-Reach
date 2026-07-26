@@ -17,6 +17,10 @@ Webhook contract (Settings → Webhooks, point at /api/billing/webhook):
   subscription_cancelled → ignored on purpose: the customer has paid through
                            the current period, so access continues until
                            subscription_expired fires at period end.
+  order_created          → grants the lifetime plan when the order's variant
+                           matches LEMONSQUEEZY_LIFETIME_VARIANT_ID; every
+                           other order (e.g. a subscription's first invoice)
+                           is ignored.
 """
 
 from __future__ import annotations
@@ -54,8 +58,12 @@ def is_configured() -> bool:
     )
 
 
-def create_checkout_session(user: dict[str, Any]) -> str:
-    """Create a Lemon Squeezy checkout for the Pro subscription; returns its URL."""
+def create_checkout_session(user: dict[str, Any], variant_id: str | None = None) -> str:
+    """Create a Lemon Squeezy checkout; returns its URL.
+
+    Defaults to the Pro subscription variant; pass variant_id to sell a
+    different variant (e.g. the lifetime one-time product).
+    """
     body = {
         "data": {
             "type": "checkouts",
@@ -71,7 +79,10 @@ def create_checkout_session(user: dict[str, Any]) -> str:
                     "data": {"type": "stores", "id": os.environ["LEMONSQUEEZY_STORE_ID"]}
                 },
                 "variant": {
-                    "data": {"type": "variants", "id": os.environ["LEMONSQUEEZY_VARIANT_ID"]}
+                    "data": {
+                        "type": "variants",
+                        "id": variant_id or os.environ["LEMONSQUEEZY_VARIANT_ID"],
+                    }
                 },
             },
         }
@@ -115,5 +126,17 @@ def handle_webhook(payload: bytes, signature: str) -> dict[str, str]:
         if user:
             database.set_plan(user["id"], "free")
             return {"status": "downgraded", "user_id": str(user["id"])}
+
+    if name == "order_created":
+        # Fires for every order, including a subscription's first invoice —
+        # only the lifetime variant grants the lifetime plan here.
+        lifetime_variant = os.environ.get("LEMONSQUEEZY_LIFETIME_VARIANT_ID")
+        attrs = event["data"].get("attributes", {})
+        variant = str(attrs.get("first_order_item", {}).get("variant_id"))
+        custom = event.get("meta", {}).get("custom_data") or {}
+        if lifetime_variant and variant == lifetime_variant and "user_id" in custom:
+            user_id = int(custom["user_id"])
+            database.set_plan(user_id, "lifetime")
+            return {"status": "lifetime", "user_id": str(user_id)}
 
     return {"status": "ignored"}

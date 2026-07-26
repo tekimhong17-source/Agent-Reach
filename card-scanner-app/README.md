@@ -47,14 +47,17 @@ HTTPS only and review PCI-DSS SAQ A guidance.
 ### Paywall
 
 - Free plan: **2 cards** (configurable via `CARDVAULT_FREE_LIMIT`).
-- Pro plan: unlimited cards, sold as a Lemon Squeezy subscription (Lemon
-  Squeezy is the merchant of record, so it also handles global sales tax/VAT).
+- Pro plan: unlimited cards — $19/year or $2.99/month as a Lemon Squeezy
+  subscription, or $39 one-time for the lifetime plan (Lemon Squeezy is the
+  merchant of record, so it also handles global sales tax/VAT).
 - Enforcement is **server-side**: the 3rd card on a free plan returns HTTP
   `402 Payment Required`, and the UI shows the upgrade panel.
 - Upgrades flow through Lemon Squeezy checkout; the `subscription_created`
   webhook flips the user to `pro`. `subscription_cancelled` is deliberately
   ignored (the customer paid through the period), and `subscription_expired`
-  downgrades them back to `free` at period end.
+  downgrades them back to `free` at period end. An `order_created` for the
+  lifetime variant grants the `lifetime` plan (one-time payment, never
+  downgraded); all other orders are ignored.
 
 ## Running it
 
@@ -76,13 +79,14 @@ any other host must be HTTPS.
 2. Create an API key under Settings → API.
 3. Add a webhook under Settings → Webhooks pointing at
    `https://yourdomain.com/api/billing/webhook`, subscribed to
-   `subscription_created` and `subscription_expired`, and choose a signing
-   secret.
+   `subscription_created`, `subscription_expired` and `order_created`, and
+   choose a signing secret.
 
 ```bash
 export LEMONSQUEEZY_API_KEY=...
 export LEMONSQUEEZY_STORE_ID=...          # numeric store ID
 export LEMONSQUEEZY_VARIANT_ID=...        # variant ID of the Pro subscription
+export LEMONSQUEEZY_LIFETIME_VARIANT_ID=... # variant ID of the lifetime product (optional)
 export LEMONSQUEEZY_WEBHOOK_SECRET=...    # the signing secret you chose
 export CARDVAULT_BASE_URL=http://localhost:8000
 ```

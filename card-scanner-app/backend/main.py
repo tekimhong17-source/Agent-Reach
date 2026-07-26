@@ -22,6 +22,7 @@ from pydantic import BaseModel, EmailStr, Field
 from . import billing, database, security
 
 FREE_CARD_LIMIT = int(os.environ.get("CARDVAULT_FREE_LIMIT", "2"))
+PRO_PLANS = {"pro", "lifetime"}  # plans with unlimited cards
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
 app = FastAPI(title="CardVault", version="1.0.0")
@@ -38,6 +39,10 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class CheckoutRequest(BaseModel):
+    tier: str = Field(default="subscription", pattern="^(subscription|lifetime)$")
 
 
 class CardCreate(BaseModel):
@@ -116,7 +121,7 @@ def create_card(body: CardCreate, user: dict[str, Any] = Depends(current_user)) 
             status_code=422,
             detail="Field appears to contain a full card number; only encrypted data is accepted",
         )
-    if user["plan"] != "pro" and database.count_cards(user["id"]) >= FREE_CARD_LIMIT:
+    if user["plan"] not in PRO_PLANS and database.count_cards(user["id"]) >= FREE_CARD_LIMIT:
         raise HTTPException(
             status_code=402,
             detail=f"Free plan is limited to {FREE_CARD_LIMIT} cards. Upgrade to Pro for unlimited cards.",
@@ -153,8 +158,11 @@ def remove_card(card_id: int, user: dict[str, Any] = Depends(current_user)) -> d
 # ---------- billing routes ----------
 
 @app.post("/api/billing/checkout")
-def checkout(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
-    if user["plan"] == "pro":
+def checkout(
+    body: CheckoutRequest | None = None, user: dict[str, Any] = Depends(current_user)
+) -> dict[str, str]:
+    tier = body.tier if body else "subscription"
+    if user["plan"] in PRO_PLANS:
         raise HTTPException(status_code=400, detail="Already on Pro")
     if not billing.is_configured():
         raise HTTPException(
@@ -162,7 +170,15 @@ def checkout(user: dict[str, Any] = Depends(current_user)) -> dict[str, str]:
             detail="Billing is not configured (set LEMONSQUEEZY_API_KEY, "
             "LEMONSQUEEZY_STORE_ID and LEMONSQUEEZY_VARIANT_ID)",
         )
-    return {"url": billing.create_checkout_session(user)}
+    variant = None
+    if tier == "lifetime":
+        variant = os.environ.get("LEMONSQUEEZY_LIFETIME_VARIANT_ID")
+        if not variant:
+            raise HTTPException(
+                status_code=503,
+                detail="Lifetime tier is not configured (set LEMONSQUEEZY_LIFETIME_VARIANT_ID)",
+            )
+    return {"url": billing.create_checkout_session(user, variant_id=variant)}
 
 
 @app.post("/api/billing/portal")

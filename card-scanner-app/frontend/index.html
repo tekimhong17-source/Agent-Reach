@@ -11,6 +11,7 @@
 <body>
   <header>
     <h1>💳 CardVault</h1>
+    <button id="theme-btn" class="ghost" title="Switch theme" aria-label="Switch theme">☀️</button>
     <div id="user-box" class="hidden">
       <span id="plan-badge" class="badge"></span>
       <span id="user-email"></span>
@@ -62,11 +63,15 @@
         <li><strong>The same zero-knowledge encryption</strong> — Pro doesn't unlock your data
             for us. We still can't read a single card, and we never will be able to.</li>
       </ul>
-      <p class="pw-price">Cancel anytime — your first <span class="pw-limit">2</span> cards
-         stay free forever.</p>
-      <button id="upgrade-btn">Unlock unlimited cards</button>
-      <p class="muted pw-smallprint">Canceling never deletes your data. If you downgrade, your
-         existing cards stay encrypted and readable — you just can't add more than
+      <p class="pw-price">$19/year or $2.99/month — cancel anytime. Your first
+         <span class="pw-limit">2</span> cards stay free forever.</p>
+      <div class="row">
+        <button id="upgrade-btn">Unlock unlimited cards</button>
+        <button id="lifetime-btn" class="secondary">Lifetime — $39 once</button>
+      </div>
+      <p class="muted pw-smallprint">Launch offer: lifetime is pay-once, Pro forever.
+         Canceling a subscription never deletes your data — your existing cards stay
+         encrypted and readable; you just can't add more than
          <span class="pw-limit">2</span>. No hostage-taking.</p>
       <p id="billing-error" class="error"></p>
     </div>
