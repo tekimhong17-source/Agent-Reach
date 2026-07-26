@@ -4,6 +4,28 @@
   let token = sessionStorage.getItem("cardvault_token");
   let me = null;
 
+  // ---------- theme ----------
+  // Follows the system preference by default; the toggle overrides it and
+  // the choice sticks (localStorage) across visits.
+  function effectiveTheme() {
+    const stored = localStorage.getItem("cardvault_theme");
+    if (stored) return stored;
+    return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+
+  function applyTheme(theme, persist) {
+    if (persist) localStorage.setItem("cardvault_theme", theme);
+    if (localStorage.getItem("cardvault_theme")) {
+      document.documentElement.dataset.theme = theme;
+    }
+    $("theme-btn").textContent = theme === "light" ? "🌙" : "☀️";
+  }
+
+  applyTheme(effectiveTheme(), false);
+  $("theme-btn").addEventListener("click", () => {
+    applyTheme(effectiveTheme() === "light" ? "dark" : "light", true);
+  });
+
   // ---------- api ----------
   async function api(path, options = {}) {
     const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
