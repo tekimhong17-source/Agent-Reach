@@ -9,6 +9,17 @@ way; the invariants are at the bottom.
 
 ## 1. Create the service on Render
 
+**Fastest path — Blueprint (recommended).** `card-scanner-app/render.yaml`
+already describes the whole service: Docker runtime, the `card-scanner-app`
+root directory, a Starter instance, the 1 GB disk mounted at `/data`, and
+every environment variable. Render Dashboard → **New → Blueprint** → pick this
+repo, and it prompts for the secrets (they are never stored in the repo).
+Use this to recreate the service after a deletion — it restores the exact
+configuration instead of retyping it. Then skip to step 2.
+
+<details>
+<summary>Manual setup (equivalent, if you prefer clicking)</summary>
+
 1. render.com → New → **Web Service** → connect the GitHub repo.
 2. Settings:
    - **Root Directory**: `card-scanner-app`
@@ -31,6 +42,13 @@ way; the invariants are at the bottom.
    endpoint meant for local testing only.
 
 5. Deploy, and confirm the `*.onrender.com` URL serves the app.
+
+</details>
+
+While the custom domain is still pending, set `CARDVAULT_BASE_URL` to the
+`*.onrender.com` URL you are actually browsing — if it points at a different
+host, checkout redirects land somewhere the buyer is not logged in and the
+upgrade looks broken.
 
 ## 2. Point the domain
 
