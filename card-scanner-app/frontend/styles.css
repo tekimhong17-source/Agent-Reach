@@ -168,7 +168,31 @@ button.danger { color: var(--danger); }
   color: var(--gold-ink);
 }
 
-#user-box { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+/* The account row must never squeeze its buttons off-screen: the email is
+   the only expendable part, so it truncates (and disappears on phones)
+   while the badge and buttons keep their size. */
+#user-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+#user-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#user-box .badge,
+#user-box button,
+#theme-btn { flex-shrink: 0; }
+
+@media (max-width: 600px) {
+  #user-email { display: none; }
+  h1 { font-size: 1.2rem; }
+  header { padding: 16px 0; }
+}
 
 #card-list { list-style: none; padding: 0; margin: 14px 0; }
 .card-item {
@@ -199,6 +223,8 @@ dialog {
   border-radius: var(--radius);
   padding: 26px;
   width: min(480px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
   box-shadow: var(--dialog-shadow);
 }
 dialog::backdrop { background: var(--backdrop); }

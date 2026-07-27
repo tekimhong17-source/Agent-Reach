@@ -152,12 +152,25 @@
     modal.showModal();
     $("card-form").classList.add("hidden");
     $("scan-status").textContent = "";
+    setCameraVisible(true);
     try {
       await CardScanner.startCamera($("camera"));
     } catch (err) {
-      $("scan-status").textContent = `Camera unavailable (${err.message}). You can enter the card manually.`;
+      // No camera: drop straight to manual entry rather than leaving a dead
+      // video box taking up half a phone screen.
+      $("scan-status").textContent = `Camera unavailable (${err.message}). Enter the card below.`;
+      showCardForm();
     }
   });
+
+  // The video and its capture button are only useful before the details form
+  // appears. Left visible, the video box pushes "Encrypt & save" past the
+  // bottom edge on a phone.
+  function setCameraVisible(visible) {
+    $("camera").classList.toggle("hidden", !visible);
+    $("capture-btn").classList.toggle("hidden", !visible);
+    $("manual-btn").classList.toggle("hidden", !visible);
+  }
 
   $("capture-btn").addEventListener("click", async () => {
     try {
@@ -179,6 +192,8 @@
   $("manual-btn").addEventListener("click", showCardForm);
 
   function showCardForm() {
+    CardScanner.stopCamera($("camera"));
+    setCameraVisible(false);
     $("card-form").classList.remove("hidden");
     updateCardMeta();
   }
@@ -196,7 +211,9 @@
   function closeScanModal() {
     CardScanner.stopCamera($("camera"));
     $("card-form").reset();
+    $("card-form").classList.add("hidden");
     $("card-error").textContent = "";
+    setCameraVisible(true); // restore for the next open
     modal.close();
   }
 
