@@ -1,0 +1,52 @@
+# Render Blueprint for CardVault.
+#
+# Recreate the whole service from this file: Render Dashboard → New →
+# Blueprint → pick this repo. Render reads this definition, creates the web
+# service with the right instance type and persistent disk, and prompts for
+# the secrets marked `sync: false` (they are never stored in the repo).
+#
+# Instance type matters: `starter`, not `free`. Render's free tier has no
+# persistent disk, so the SQLite database would live on the container's
+# temporary filesystem and every restart would wipe every user's vault.
+
+services:
+  - type: web
+    name: cardvault
+    runtime: docker
+    rootDir: card-scanner-app
+    plan: starter
+    healthCheckPath: /
+    autoDeploy: true
+
+    disk:
+      name: cardvault-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      # Database on the persistent disk above — never change this to a path
+      # outside /data.
+      - key: CARDVAULT_DB
+        value: /data/cardvault.db
+
+      # Public URL of the site. Must match the host people actually browse,
+      # or post-checkout redirects land somewhere the user isn't logged in.
+      - key: CARDVAULT_BASE_URL
+        sync: false
+
+      # Lemon Squeezy credentials — prompted at deploy time, never committed.
+      # Without these the app still runs; checkout returns 503 and the paywall
+      # shows "Billing is not configured".
+      - key: LEMONSQUEEZY_API_KEY
+        sync: false
+      - key: LEMONSQUEEZY_STORE_ID
+        sync: false
+      - key: LEMONSQUEEZY_VARIANT_ID
+        sync: false
+      - key: LEMONSQUEEZY_LIFETIME_VARIANT_ID
+        sync: false
+      - key: LEMONSQUEEZY_WEBHOOK_SECRET
+        sync: false
+
+# CARDVAULT_DEV is deliberately absent: it exposes a free-upgrade endpoint
+# and must never be set in production.
