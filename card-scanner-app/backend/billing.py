@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 from typing import Any
 
@@ -36,6 +37,16 @@ import httpx
 from . import database
 
 API_BASE = "https://api.lemonsqueezy.com/v1"
+
+logger = logging.getLogger(__name__)
+
+
+class BillingUnavailable(RuntimeError):
+    """An upstream Lemon Squeezy call failed (network, auth, rate limit, 5xx).
+
+    Raised so the API can answer 502 with something a buyer can act on,
+    instead of leaking a 500 at the moment they are trying to pay.
+    """
 
 
 def _base_url() -> str:
@@ -87,20 +98,28 @@ def create_checkout_session(user: dict[str, Any], variant_id: str | None = None)
             },
         }
     }
-    resp = httpx.post(f"{API_BASE}/checkouts", json=body, headers=_headers(), timeout=20)
-    resp.raise_for_status()
-    return resp.json()["data"]["attributes"]["url"]
+    try:
+        resp = httpx.post(f"{API_BASE}/checkouts", json=body, headers=_headers(), timeout=20)
+        resp.raise_for_status()
+        return resp.json()["data"]["attributes"]["url"]
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        logger.error("Lemon Squeezy checkout failed: %s", exc)
+        raise BillingUnavailable(str(exc)) from exc
 
 
 def create_portal_session(subscription_id: str) -> str:
     """Fetch the signed customer-portal URL for a subscription (valid ~24h)."""
-    resp = httpx.get(
-        f"{API_BASE}/subscriptions/{subscription_id}", headers=_headers(), timeout=20
-    )
-    resp.raise_for_status()
-    url = resp.json()["data"]["attributes"]["urls"].get("customer_portal")
+    try:
+        resp = httpx.get(
+            f"{API_BASE}/subscriptions/{subscription_id}", headers=_headers(), timeout=20
+        )
+        resp.raise_for_status()
+        url = resp.json()["data"]["attributes"]["urls"].get("customer_portal")
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        logger.error("Lemon Squeezy portal lookup failed: %s", exc)
+        raise BillingUnavailable(str(exc)) from exc
     if not url:
-        raise ValueError("No customer portal available for this subscription")
+        raise BillingUnavailable("No customer portal available for this subscription")
     return url
 
 

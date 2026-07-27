@@ -43,6 +43,8 @@ services:
         sync: false
       - key: LEMONSQUEEZY_VARIANT_ID
         sync: false
+      - key: LEMONSQUEEZY_ANNUAL_VARIANT_ID
+        sync: false
       - key: LEMONSQUEEZY_LIFETIME_VARIANT_ID
         sync: false
       - key: LEMONSQUEEZY_WEBHOOK_SECRET

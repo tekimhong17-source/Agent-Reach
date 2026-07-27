@@ -47,9 +47,12 @@ HTTPS only and review PCI-DSS SAQ A guidance.
 ### Paywall
 
 - Free plan: **2 cards** (configurable via `CARDVAULT_FREE_LIMIT`).
-- Pro plan: unlimited cards — $19/year or $2.99/month as a Lemon Squeezy
-  subscription, or $39 one-time for the lifetime plan (Lemon Squeezy is the
-  merchant of record, so it also handles global sales tax/VAT).
+- Pro plan: unlimited cards, sold as three explicit choices — **$19/year**
+  (the default and the one the paywall leads with), $2.99/month, or $39
+  one-time for the lifetime plan. Lemon Squeezy is the merchant of record, so
+  it also handles global sales tax/VAT.
+- Annual is the default deliberately: the per-transaction fee takes ~22% of a
+  $2.99 monthly charge but only ~7.6% of a $19 annual one.
 - Enforcement is **server-side**: the 3rd card on a free plan returns HTTP
   `402 Payment Required`, and the UI shows the upgrade panel.
 - Upgrades flow through Lemon Squeezy checkout; the `subscription_created`
@@ -75,7 +78,9 @@ any other host must be HTTPS.
 ### Lemon Squeezy setup (for the paywall)
 
 1. Create a store at lemonsqueezy.com, add a subscription product ("CardVault
-   Pro") and note the **variant ID** of its monthly price.
+   Pro") with **two variants** — monthly ($2.99) and yearly ($19) — and note
+   both variant IDs. Add a separate one-time product for the $39 lifetime
+   plan if you want that tier.
 2. Create an API key under Settings → API.
 3. Add a webhook under Settings → Webhooks pointing at
    `https://yourdomain.com/api/billing/webhook`, subscribed to
@@ -85,7 +90,8 @@ any other host must be HTTPS.
 ```bash
 export LEMONSQUEEZY_API_KEY=...
 export LEMONSQUEEZY_STORE_ID=...          # numeric store ID
-export LEMONSQUEEZY_VARIANT_ID=...        # variant ID of the Pro subscription
+export LEMONSQUEEZY_VARIANT_ID=...        # variant ID of the MONTHLY subscription
+export LEMONSQUEEZY_ANNUAL_VARIANT_ID=... # variant ID of the YEARLY subscription
 export LEMONSQUEEZY_LIFETIME_VARIANT_ID=... # variant ID of the lifetime product (optional)
 export LEMONSQUEEZY_WEBHOOK_SECRET=...    # the signing secret you chose
 export CARDVAULT_BASE_URL=http://localhost:8000
@@ -119,7 +125,7 @@ lifecycle (created → pro, cancelled → still pro, expired → free).
 | GET | `/api/cards` | List encrypted cards |
 | POST | `/api/cards` | Store an encrypted card (402 at free limit) |
 | DELETE | `/api/cards/{id}` | Delete a card |
-| POST | `/api/billing/checkout` | Start Lemon Squeezy checkout for Pro |
+| POST | `/api/billing/checkout` | Start checkout; body `{"tier": "yearly"\|"monthly"\|"lifetime"}`, defaults to `yearly` |
 | POST | `/api/billing/portal` | Open the Lemon Squeezy customer portal (self-serve cancel) |
 | POST | `/api/billing/webhook` | Lemon Squeezy webhook (HMAC signature-verified) |
 

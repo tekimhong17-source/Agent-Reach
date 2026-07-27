@@ -136,7 +136,8 @@
       $("billing-error").textContent = err.message;
     }
   }
-  $("upgrade-btn").addEventListener("click", () => startCheckout("subscription"));
+  $("upgrade-btn").addEventListener("click", () => startCheckout("yearly"));
+  $("monthly-btn").addEventListener("click", () => startCheckout("monthly"));
   $("lifetime-btn").addEventListener("click", () => startCheckout("lifetime"));
 
   // ---------- scanning ----------

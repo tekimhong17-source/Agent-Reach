@@ -185,6 +185,7 @@ def _configure_billing(monkeypatch):
     monkeypatch.setenv("LEMONSQUEEZY_API_KEY", "lsq_test_dummy")
     monkeypatch.setenv("LEMONSQUEEZY_STORE_ID", "1")
     monkeypatch.setenv("LEMONSQUEEZY_VARIANT_ID", "1")
+    monkeypatch.setenv("LEMONSQUEEZY_ANNUAL_VARIANT_ID", "12")
     monkeypatch.setenv("LEMONSQUEEZY_LIFETIME_VARIANT_ID", "99")
     monkeypatch.setenv("LEMONSQUEEZY_WEBHOOK_SECRET", "whsecret")
 
@@ -302,3 +303,50 @@ def test_checkout_invalid_tier_rejected(client):
         "/api/billing/checkout", json={"tier": "weekly"}, headers=auth(token)
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "tier,env_key",
+    [
+        ("yearly", "LEMONSQUEEZY_ANNUAL_VARIANT_ID"),
+        ("monthly", "LEMONSQUEEZY_VARIANT_ID"),
+        ("lifetime", "LEMONSQUEEZY_LIFETIME_VARIANT_ID"),
+    ],
+)
+def test_checkout_reports_the_unconfigured_tier(client, monkeypatch, tier, env_key):
+    """Each plan names the exact env var it needs, rather than failing vaguely."""
+    _configure_billing(monkeypatch)
+    monkeypatch.delenv(env_key, raising=False)
+    if env_key != "LEMONSQUEEZY_VARIANT_ID":
+        monkeypatch.setenv("LEMONSQUEEZY_VARIANT_ID", "1")  # keep billing "configured"
+    token = register(client)
+    res = client.post("/api/billing/checkout", json={"tier": tier}, headers=auth(token))
+    assert res.status_code == 503
+    assert env_key in res.json()["detail"]
+
+
+def test_upstream_failure_becomes_502_not_500(client, monkeypatch):
+    """A Lemon Squeezy outage must not surface as a raw 500 to a buyer."""
+    import backend.billing as billing_mod
+    import backend.main as main_mod
+
+    _configure_billing(monkeypatch)
+    token = register(client)
+
+    def boom(*_a, **_kw):
+        raise billing_mod.BillingUnavailable("connection refused")
+
+    monkeypatch.setattr(main_mod.billing, "create_checkout_session", boom)
+    res = client.post("/api/billing/checkout", json={"tier": "yearly"}, headers=auth(token))
+    assert res.status_code == 502
+    assert "Nothing was charged" in res.json()["detail"]
+
+
+def test_checkout_defaults_to_yearly(client, monkeypatch):
+    """No body at all must mean the annual plan, not the monthly one."""
+    _configure_billing(monkeypatch)
+    monkeypatch.delenv("LEMONSQUEEZY_ANNUAL_VARIANT_ID", raising=False)
+    token = register(client)
+    res = client.post("/api/billing/checkout", headers=auth(token))
+    assert res.status_code == 503
+    assert "yearly" in res.json()["detail"]

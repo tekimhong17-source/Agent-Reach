@@ -27,7 +27,8 @@ moves to Postgres.
    | `CARDVAULT_BASE_URL` | the public URL you are actually browsing (see below) |
    | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
    | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
-   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the Pro subscription |
+   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the monthly subscription |
+   | `LEMONSQUEEZY_ANNUAL_VARIANT_ID` | variant ID of the yearly subscription |
    | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
    | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
 
@@ -69,7 +70,8 @@ Manual Render setup, if you prefer clicking:
    | `CARDVAULT_BASE_URL` | `https://trycardvault.com` |
    | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
    | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
-   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the Pro subscription |
+   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the monthly subscription |
+   | `LEMONSQUEEZY_ANNUAL_VARIANT_ID` | variant ID of the yearly subscription |
    | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
    | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
 

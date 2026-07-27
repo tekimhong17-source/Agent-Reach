@@ -260,6 +260,22 @@ dialog::backdrop { background: var(--backdrop); }
   color: var(--gold-bright);
   margin: 16px 0 12px;
 }
+/* Plan buttons stack full-width on a phone so all three stay tappable. */
+.pw-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pw-actions button { flex: 1 1 auto; }
+#upgrade-btn { display: inline-flex; align-items: baseline; gap: 8px; justify-content: center; }
+.pw-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+@media (max-width: 520px) {
+  .pw-actions { flex-direction: column; }
+  .pw-actions button { width: 100%; }
+}
+
 .pw-smallprint { margin-top: 12px; font-size: 0.8rem; }
 
 #upgrade-pending { color: var(--gold-bright); }

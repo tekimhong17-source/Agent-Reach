@@ -41,8 +41,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+# Which Lemon Squeezy variant each purchasable tier maps to. Yearly is the
+# default because the per-transaction fee eats ~22% of a $2.99 monthly charge
+# but only ~7.6% of a $19 annual one.
+TIER_VARIANT_ENV = {
+    "yearly": "LEMONSQUEEZY_ANNUAL_VARIANT_ID",
+    "monthly": "LEMONSQUEEZY_VARIANT_ID",
+    "lifetime": "LEMONSQUEEZY_LIFETIME_VARIANT_ID",
+}
+
+
 class CheckoutRequest(BaseModel):
-    tier: str = Field(default="subscription", pattern="^(subscription|lifetime)$")
+    tier: str = Field(default="yearly", pattern="^(yearly|monthly|lifetime)$")
 
 
 class CardCreate(BaseModel):
@@ -161,7 +171,7 @@ def remove_card(card_id: int, user: dict[str, Any] = Depends(current_user)) -> d
 def checkout(
     body: CheckoutRequest | None = None, user: dict[str, Any] = Depends(current_user)
 ) -> dict[str, str]:
-    tier = body.tier if body else "subscription"
+    tier = body.tier if body else "yearly"
     if user["plan"] in PRO_PLANS:
         raise HTTPException(status_code=400, detail="Already on Pro")
     if not billing.is_configured():
@@ -170,15 +180,21 @@ def checkout(
             detail="Billing is not configured (set LEMONSQUEEZY_API_KEY, "
             "LEMONSQUEEZY_STORE_ID and LEMONSQUEEZY_VARIANT_ID)",
         )
-    variant = None
-    if tier == "lifetime":
-        variant = os.environ.get("LEMONSQUEEZY_LIFETIME_VARIANT_ID")
-        if not variant:
-            raise HTTPException(
-                status_code=503,
-                detail="Lifetime tier is not configured (set LEMONSQUEEZY_LIFETIME_VARIANT_ID)",
-            )
-    return {"url": billing.create_checkout_session(user, variant_id=variant)}
+    env_key = TIER_VARIANT_ENV[tier]
+    variant = os.environ.get(env_key)
+    if not variant:
+        raise HTTPException(
+            status_code=503,
+            detail=f"The {tier} plan is not configured (set {env_key})",
+        )
+    try:
+        return {"url": billing.create_checkout_session(user, variant_id=variant)}
+    except billing.BillingUnavailable as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Our payment provider isn't responding. Nothing was charged — "
+            "please try again in a moment.",
+        ) from exc
 
 
 @app.post("/api/billing/portal")
@@ -187,7 +203,13 @@ def billing_portal(user: dict[str, Any] = Depends(current_user)) -> dict[str, st
         raise HTTPException(status_code=503, detail="Billing is not configured")
     if not user.get("subscription_id"):
         raise HTTPException(status_code=400, detail="No billing profile for this account")
-    return {"url": billing.create_portal_session(user["subscription_id"])}
+    try:
+        return {"url": billing.create_portal_session(user["subscription_id"])}
+    except billing.BillingUnavailable as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Our payment provider isn't responding. Please try again in a moment.",
+        ) from exc
 
 
 @app.post("/api/billing/webhook")
