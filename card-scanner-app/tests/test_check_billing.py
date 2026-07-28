@@ -144,7 +144,8 @@ def test_no_webhook_registered_fails(env):
 
 
 def test_register_webhook_covers_sale_and_ending(env):
-    out = check_billing.register_webhook(client=make_client())
+    ok, out = check_billing.register_webhook(client=make_client())
+    assert ok
     assert WEBHOOK_URL in out
     for resource in ("sale", "cancellation", "subscription_ended"):
         assert f"{resource}: registered" in out
@@ -152,11 +153,47 @@ def test_register_webhook_covers_sale_and_ending(env):
 
 def test_register_webhook_needs_config(monkeypatch):
     monkeypatch.delenv("GUMROAD_ACCESS_TOKEN", raising=False)
-    assert "GUMROAD_ACCESS_TOKEN" in check_billing.register_webhook(client=make_client())
+    ok, out = check_billing.register_webhook(client=make_client())
+    assert not ok
+    assert "GUMROAD_ACCESS_TOKEN" in out
+
+
+def test_partial_registration_is_a_failure(env):
+    """sale registered but subscription_ended not = purchases upgrade, nothing
+    ever downgrades. That must not look like success."""
+    calls = {"n": 0}
+
+    def handler(request):
+        p = request.url.path
+        if p.endswith("/resource_subscriptions") and request.method == "PUT":
+            calls["n"] += 1
+            # first resource succeeds, the rest fail
+            if calls["n"] == 1:
+                return httpx.Response(200, json={"success": True})
+            return httpx.Response(500, json={"success": False})
+        return httpx.Response(404, json={})
+
+    ok, out = check_billing.register_webhook(
+        client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert not ok, "a partial registration must not report success"
+    assert "sale: registered" in out
+    assert "FAILED" in out
+
+
+def test_register_webhook_unreachable_is_a_failure(env):
+    def handler(request):
+        raise httpx.ConnectError("blocked")
+
+    ok, out = check_billing.register_webhook(
+        client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert not ok
+    assert "Could not reach Gumroad" in out
 
 
 def test_catalog_lists_products_and_suggests_env_vars(env):
-    out = "\n".join(check_billing.list_catalog(client=make_client()))
+    ok, lines = check_billing.list_catalog(client=make_client())
+    assert ok
+    out = "\n".join(lines)
     assert "GUMROAD_YEARLY_URL=https://shop.gumroad.com/l/cv-yearly" in out
     assert "GUMROAD_MONTHLY_URL=https://shop.gumroad.com/l/cv-monthly" in out
     assert "GUMROAD_LIFETIME_URL=https://shop.gumroad.com/l/cv-lifetime" in out
@@ -165,4 +202,32 @@ def test_catalog_lists_products_and_suggests_env_vars(env):
 
 def test_catalog_without_token_says_so(monkeypatch):
     monkeypatch.delenv("GUMROAD_ACCESS_TOKEN", raising=False)
-    assert "Settings → Advanced" in check_billing.list_catalog(client=make_client())[0]
+    ok, lines = check_billing.list_catalog(client=make_client())
+    assert not ok, "no token is a failure, not an empty success"
+    assert "Settings → Advanced" in lines[0]
+
+
+def test_catalog_unreachable_is_a_failure(env):
+    def handler(request):
+        raise httpx.ConnectError("blocked")
+
+    ok, lines = check_billing.list_catalog(
+        client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert not ok
+    assert any("Could not reach Gumroad" in l for l in lines)
+
+
+def test_main_exit_codes(env, monkeypatch, capsys):
+    """The CLI's exit code is its machine-readable half — it must not lie."""
+    monkeypatch.setattr(check_billing, "list_catalog", lambda: (False, ["nope"]))
+    monkeypatch.setattr(sys, "argv", ["check_billing", "--list"])
+    assert check_billing.main() == 1
+
+    monkeypatch.setattr(check_billing, "list_catalog", lambda: (True, ["fine"]))
+    assert check_billing.main() == 0
+
+    monkeypatch.setattr(sys, "argv", ["check_billing", "--register-webhook"])
+    monkeypatch.setattr(check_billing, "register_webhook", lambda: (False, "nope"))
+    assert check_billing.main() == 1
+    monkeypatch.setattr(check_billing, "register_webhook", lambda: (True, "done"))
+    assert check_billing.main() == 0

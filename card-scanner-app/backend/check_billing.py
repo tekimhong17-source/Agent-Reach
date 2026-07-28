@@ -182,8 +182,14 @@ def _run(client: httpx.Client) -> list[Check]:
     return checks
 
 
-def register_webhook(client: httpx.Client | None = None) -> str:
-    """Point Gumroad's sale + subscription webhooks at this deployment."""
+def register_webhook(client: httpx.Client | None = None) -> tuple[bool, str]:
+    """Point Gumroad's sale + subscription webhooks at this deployment.
+
+    Returns (ok, report). A partial registration is a failure: if `sale`
+    registers but `subscription_ended` does not, purchases grant Pro while
+    nothing ever downgrades — a silent leak, so the caller must be able to
+    tell, and the exit code must say so.
+    """
     owns = client is None
     client = client or httpx.Client(timeout=20)
     token = os.environ.get("GUMROAD_ACCESS_TOKEN", "")
@@ -191,36 +197,41 @@ def register_webhook(client: httpx.Client | None = None) -> str:
     base = os.environ.get("CARDVAULT_BASE_URL", "").rstrip("/")
     try:
         if not (token and secret and base):
-            return ("Set GUMROAD_ACCESS_TOKEN, GUMROAD_WEBHOOK_SECRET and "
-                    "CARDVAULT_BASE_URL first.")
+            return False, ("Set GUMROAD_ACCESS_TOKEN, GUMROAD_WEBHOOK_SECRET and "
+                           "CARDVAULT_BASE_URL first.")
         post_url = f"{base}/api/billing/webhook?token={secret}"
-        results = []
+        results, all_ok = [], True
         for resource in ("sale", "cancellation", "subscription_ended"):
             r = client.put(f"{API_BASE}/resource_subscriptions", headers=_headers(token),
                            data={"resource_name": resource, "post_url": post_url})
             ok = r.status_code < 300 and r.json().get("success", False)
+            all_ok = all_ok and ok
             results.append(f"  {resource}: {'registered' if ok else f'FAILED ({r.status_code})'}")
-        return f"Pointing Gumroad at {post_url}\n" + "\n".join(results)
+        return all_ok, f"Pointing Gumroad at {post_url}\n" + "\n".join(results)
     except httpx.HTTPError as exc:
-        return f"Could not reach Gumroad: {exc}"
+        return False, f"Could not reach Gumroad: {exc}"
     finally:
         if owns:
             client.close()
 
 
-def list_catalog(client: httpx.Client | None = None) -> list[str]:
-    """Print every product with its URL, price and the env var it belongs in."""
+def list_catalog(client: httpx.Client | None = None) -> tuple[bool, list[str]]:
+    """Every product with its URL, price and the env var it belongs in.
+
+    Returns (ok, lines) so a failure to reach Gumroad is a non-zero exit
+    rather than a success that merely prints bad news.
+    """
     owns = client is None
     client = client or httpx.Client(timeout=20)
     token = os.environ.get("GUMROAD_ACCESS_TOKEN", "")
     lines: list[str] = []
     try:
         if not token:
-            return ["GUMROAD_ACCESS_TOKEN is not set — create one at "
-                    "Gumroad → Settings → Advanced → Applications."]
+            return False, ["GUMROAD_ACCESS_TOKEN is not set — create one at "
+                           "Gumroad → Settings → Advanced → Applications."]
         r = client.get(f"{API_BASE}/products", headers=_headers(token))
         if r.status_code != 200:
-            return [f"Could not list products (HTTP {r.status_code}); check the token."]
+            return False, [f"Could not list products (HTTP {r.status_code}); check the token."]
         for p in r.json().get("products", []):
             recurring = p.get("is_recurring_billing")
             kind = "recurring" if recurring else "one-time"
@@ -231,24 +242,28 @@ def list_catalog(client: httpx.Client | None = None) -> list[str]:
             lines.append(f"  {p.get('name', '?')} — {_money(p.get('price'))} {kind}"
                          f"{'' if p.get('published', True) else '  [UNPUBLISHED]'}"
                          f"\n      {p.get('short_url', '?')}{hint}")
+        ok = True
     except httpx.HTTPError as exc:
         lines.append(f"Could not reach Gumroad: {exc}")
+        ok = False
     finally:
         if owns:
             client.close()
-    return lines or ["No products found — create them in Gumroad first."]
+    return ok, (lines or ["No products found — create them in Gumroad first."])
 
 
 def main() -> int:
     if "--list" in sys.argv:
         print("\nYour Gumroad products\n" + "=" * 21)
-        for line in list_catalog():
+        ok, lines = list_catalog()
+        for line in lines:
             print(line)
         print()
-        return 0
+        return 0 if ok else 1
     if "--register-webhook" in sys.argv:
-        print(register_webhook())
-        return 0
+        ok, report = register_webhook()
+        print(report)
+        return 0 if ok else 1
 
     checks = run_checks()
     print("\nCardVault billing configuration\n" + "=" * 34)
