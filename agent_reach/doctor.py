@@ -125,3 +125,12 @@ def format_report(results: Dict[str, dict]) -> str:
             pass
 
     return "\n".join(lines)
+
+
+def print_report(results: Dict[str, dict]) -> None:
+    """Print the report, rendering the Rich markup that format_report emits."""
+    try:
+        from rich import print as rprint
+    except ImportError:
+        rprint = print
+    rprint(format_report(results))

@@ -172,7 +172,7 @@ def _cmd_install(args):
     """One-shot deterministic installer."""
     import os
     from agent_reach.config import Config
-    from agent_reach.doctor import check_all, format_report
+    from agent_reach.doctor import check_all, print_report
 
     safe_mode = args.safe
     dry_run = args.dry_run
@@ -327,7 +327,7 @@ def _cmd_install(args):
 
         # Final status
         print()
-        print(format_report(results))
+        print_report(results)
         print()
 
         # ── Install agent skill ──
@@ -1475,11 +1475,7 @@ def _cmd_uninstall(args):
 
 def _cmd_doctor(args=None):
     from agent_reach.config import Config
-    from agent_reach.doctor import check_all, format_report
-    try:
-        from rich import print as rprint
-    except ImportError:
-        rprint = print
+    from agent_reach.doctor import check_all, print_report
     config = Config()
     results = check_all(config)
 
@@ -1487,7 +1483,7 @@ def _cmd_doctor(args=None):
         print(json.dumps(results, ensure_ascii=False, indent=2))
         return
 
-    rprint(format_report(results))
+    print_report(results)
 
     # Auto-install skill if not already present (fixes #154)
     _install_skill(force=False)

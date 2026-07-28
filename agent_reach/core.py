@@ -7,12 +7,11 @@ Agent Reach helps AI agents install and configure upstream platform tools
 call the upstream tools directly — no wrapper layer needed.
 
 Usage:
-    from agent_reach.doctor import check_all, format_report
+    from agent_reach.doctor import check_all, print_report
     from agent_reach.config import Config
 
     config = Config()
-    results = check_all(config)
-    print(format_report(results))
+    print_report(check_all(config))
 """
 
 from typing import Dict, Optional
