@@ -104,11 +104,49 @@ upgrade looks broken.
 
 ## 3. Wire Lemon Squeezy to the live domain
 
-1. Settings → Webhooks → endpoint `https://trycardvault.com/api/billing/webhook`,
-   events `subscription_created` + `subscription_expired` + `order_created`,
-   signing secret =
-   the `LEMONSQUEEZY_WEBHOOK_SECRET` you set above.
-2. Keep the store in **test mode** until the launch checklist passes.
+You need **two products** — one subscription with two variants, and one
+one-time product — plus a webhook. Do it in this order.
+
+1. **Create the subscription product.** Products → New Product → name it
+   "CardVault Pro". Set its price to **$2.99, billing period Monthly**. Save.
+2. **Add the yearly variant to that same product.** Open the product →
+   Variants → add a second variant priced **$19, billing period Yearly**.
+   Two variants on one product is what lets buyers choose; a separate
+   product would work too, but this keeps the dashboard tidy.
+3. **Create the lifetime product.** Products → New Product → "CardVault Pro
+   Lifetime", price **$39**, and set it to a **one-time payment**, not a
+   subscription. This is the step most people get wrong — if it is created
+   as a subscription, buyers get charged repeatedly for a "lifetime" plan.
+4. **Create an API key.** Settings → API → new key. Copy it into
+   `LEMONSQUEEZY_API_KEY`.
+5. **Find the numeric IDs without hunting.** With the API key set, run:
+
+   ```bash
+   cd card-scanner-app
+   python -m backend.check_billing --list
+   ```
+
+   It prints every store, product and variant with its ID, and suggests which
+   environment variable each one belongs in. Copy those into your host.
+
+6. **Add the webhook.** Settings → Webhooks → new webhook:
+   - URL: `https://trycardvault.com/api/billing/webhook` (or your current
+     `*.up.railway.app` URL — it must match `CARDVAULT_BASE_URL`)
+   - Events: `subscription_created`, `subscription_expired`, `order_created`
+   - Signing secret: choose one, and put the same string in
+     `LEMONSQUEEZY_WEBHOOK_SECRET`
+7. **Verify the whole thing before trusting it:**
+
+   ```bash
+   python -m backend.check_billing
+   ```
+
+   It asks Lemon Squeezy directly whether the key works, the store exists,
+   each variant has the price and billing period the paywall advertises, and
+   the webhook points at this deployment with all three events. Every failure
+   names the exact thing to fix. It is read-only — it never charges anything.
+
+8. Keep the store in **test mode** until the launch checklist below passes.
 
 ## 4. Launch checklist (run in Lemon Squeezy test mode)
 

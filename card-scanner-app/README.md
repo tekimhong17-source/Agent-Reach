@@ -97,6 +97,14 @@ export LEMONSQUEEZY_WEBHOOK_SECRET=...    # the signing secret you chose
 export CARDVAULT_BASE_URL=http://localhost:8000
 ```
 
+Verify the configuration before trusting it — this asks Lemon Squeezy whether
+the key, store, variant prices/periods and webhook are actually right:
+
+```bash
+python -m backend.check_billing          # verify the setup
+python -m backend.check_billing --list   # print every store/product/variant ID
+```
+
 Use the store's **test mode** for end-to-end checkout testing before launch.
 Without Lemon Squeezy keys the app still runs — checkout returns 503 and, if
 you set `CARDVAULT_DEV=1`, a `POST /api/billing/dev-upgrade` endpoint lets
@@ -111,8 +119,10 @@ pytest tests/ -v
 
 Covers registration/login/logout, session invalidation, per-user card
 isolation, the plaintext-PAN rejection safety net, free-limit enforcement
-(402), Pro bypass, webhook signature verification, and the full subscription
-lifecycle (created → pro, cancelled → still pro, expired → free).
+(402), Pro bypass, webhook signature verification, the full subscription
+lifecycle (created → pro, cancelled → still pro, expired → free), and the
+billing-configuration checker (wrong prices, wrong billing period, lifetime
+misconfigured as a subscription, webhook pointing at the wrong host).
 
 ## API
 
