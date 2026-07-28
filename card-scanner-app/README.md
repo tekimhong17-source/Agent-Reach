@@ -115,6 +115,27 @@ Without a Gumroad token the app still runs — checkout returns 503 and, if you
 set `CARDVAULT_DEV=1`, a `POST /api/billing/dev-upgrade` endpoint lets you
 exercise the Pro path locally.
 
+## Rescuing a missed sale
+
+Webhooks are not guaranteed. If Gumroad's webhook was pointing at an old
+deployment when someone paid, the ping never arrived and there is nothing to
+retry — the customer is charged and still on the free plan. Fix them by hand:
+
+```bash
+python -m backend.grant --list                                   # who exists, on what plan
+python -m backend.grant buyer@example.com pro --subscription-id 12345
+python -m backend.grant buyer@example.com lifetime               # a one-time sale
+python -m backend.grant buyer@example.com free                   # revoke
+```
+
+Pass `--subscription-id` (from the Gumroad sale) whenever you rescue a
+**subscription**: without it the account is upgraded but never linked to the
+subscription, so the eventual `subscription_ended` webhook cannot find them
+and they keep Pro after cancelling.
+
+On Railway, run it with `railway run` (or from the service shell) so
+`CARDVAULT_DB` points at the mounted volume rather than a local file.
+
 ## Tests
 
 ```bash
@@ -129,7 +150,8 @@ lifecycle (sale → pro, cancelled → still pro, ended → free), the guarantee
 that a **forged webhook cannot grant access** because Gumroad must confirm the
 sale, and the billing-configuration checker (wrong prices, lifetime
 misconfigured as a subscription, unpublished products, webhook pointing at
-the wrong host).
+the wrong host), and the manual grant CLI (including that a rescued
+subscription can still be downgraded when it later ends).
 
 ## API
 

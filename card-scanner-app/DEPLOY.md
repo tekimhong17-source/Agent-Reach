@@ -153,6 +153,19 @@ so you can walk the whole flow signed in as yourself without moving money. (A
    path — your own purchases are always test purchases. Refund them
    afterwards from Gumroad.
 
+## If a purchase does not grant access
+
+The webhook is the only thing that upgrades an account, and a webhook pointing
+at a stale URL delivers nowhere — there is no retry to wait for. Re-point it,
+then fix the affected customer by hand:
+
+```bash
+python -m backend.check_billing --register-webhook   # re-point at CARDVAULT_BASE_URL
+python -m backend.check_billing                      # confirm they agree
+railway run python -m backend.grant --list           # find the account
+railway run python -m backend.grant buyer@example.com pro --subscription-id 12345
+```
+
 ## Invariants for any other host (Fly.io, Koyeb, a VPS)
 
 - Run `uvicorn backend.main:app --host 0.0.0.0 --port $PORT` from

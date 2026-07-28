@@ -1,0 +1,486 @@
+<!-- CardVault — custom Gumroad landing page. Fully self-contained:
+     inline CSS, inline SVG, inline JS. No external requests of any kind. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardVault — every card you own, encrypted before we ever see it</title>
+
+<style>
+  :root{
+    --bg:#0f0e0c; --panel:#191712; --panel-2:#211e17;
+    --edge:rgba(201,164,92,.18); --edge-strong:rgba(201,164,92,.45);
+    --text:#f2ede2; --muted:#a89f8d;
+    --gold:#c9a45c; --gold-bright:#e0bf78; --gold-ink:#241c08;
+    --good:#7fae86; --warn:#d9a441;
+    --glow:rgba(201,164,92,.07);
+    --shadow:0 18px 40px rgba(0,0,0,.42);
+    --radius:16px;
+    --maxw:1080px;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f6f1e7; --panel:#fffdf8; --panel-2:#f8f4ea;
+      --edge:rgba(140,106,43,.22); --edge-strong:rgba(140,106,43,.55);
+      --text:#2a2620; --muted:#6f6857;
+      --gold:#b8924a; --gold-bright:#8c6a2b; --gold-ink:#241c08;
+      --good:#4a7a52; --warn:#a5701f;
+      --glow:rgba(184,146,74,.10);
+      --shadow:0 12px 30px rgba(93,75,35,.12);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f1e7; --panel:#fffdf8; --panel-2:#f8f4ea;
+    --edge:rgba(140,106,43,.22); --edge-strong:rgba(140,106,43,.55);
+    --text:#2a2620; --muted:#6f6857;
+    --gold:#b8924a; --gold-bright:#8c6a2b; --gold-ink:#241c08;
+    --good:#4a7a52; --warn:#a5701f;
+    --glow:rgba(184,146,74,.10);
+    --shadow:0 12px 30px rgba(93,75,35,.12);
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 620px at 50% -260px,var(--glow),transparent),var(--bg);
+    color:var(--text);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:var(--maxw);margin-inline:auto;padding:0 20px}
+
+  h1,h2,h3{font-family:Georgia,"Times New Roman",serif;font-weight:600;line-height:1.2;letter-spacing:.01em;margin:0}
+  h1{font-size:clamp(1.75rem,5vw,3.1rem);text-wrap:balance;max-width:26ch;margin-inline:auto}
+  h2{font-size:clamp(1.4rem,3.6vw,2.1rem);margin-bottom:.6em}
+  h3{font-size:1.12rem}
+  p{margin:0 0 1em}
+  .muted{color:var(--muted)}
+  .lede{font-size:clamp(1rem,2.2vw,1.18rem);color:var(--muted);max-width:44ch}
+
+  a{color:var(--gold-bright)}
+  :focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-radius:6px}
+
+  .skip{position:absolute;left:-9999px;top:0;background:var(--gold);color:var(--gold-ink);
+        padding:10px 16px;border-radius:0 0 8px 0;font-weight:700;z-index:100}
+  .skip:focus{left:0}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:.55em;
+    padding:15px 26px;border:none;border-radius:10px;cursor:pointer;
+    font-size:1.02rem;font-weight:700;font-family:inherit;text-decoration:none;
+    background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:var(--gold-ink);
+    box-shadow:0 6px 18px rgba(0,0,0,.22);
+    transition:transform .12s ease,filter .15s ease;
+    text-align:center;
+  }
+  .btn:hover{filter:brightness(1.07)}
+  .btn:active{transform:translateY(1px)}
+  .btn--ghost{
+    background:transparent;border:1px solid var(--gold);color:var(--gold-bright);
+    box-shadow:none;font-weight:600;
+  }
+  .btn--sm{padding:10px 18px;font-size:.92rem}
+  .btn--block{width:100%}
+  @media (prefers-reduced-motion: reduce){ .btn{transition:none} }
+
+  /* ---------- sticky bar ---------- */
+  .sticky{
+    position:fixed;left:0;right:0;top:0;z-index:60;
+    background:color-mix(in srgb,var(--bg) 92%,transparent);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--edge);
+    transform:translateY(-100%);transition:transform .25s ease;
+  }
+  .sticky.show{transform:translateY(0)}
+  @media (prefers-reduced-motion: reduce){ .sticky{transition:none} }
+  .sticky__in{display:flex;align-items:center;gap:14px;padding:10px 0;max-width:var(--maxw);margin-inline:auto;padding-inline:20px}
+  .sticky__name{font-family:Georgia,serif;font-weight:600;flex:1;min-width:0;
+                overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sticky__price{color:var(--gold-bright);font-weight:700;white-space:nowrap}
+  @media (max-width:520px){ .sticky__price{display:none} }
+
+  /* ---------- theme toggle ---------- */
+  .themebtn{
+    position:absolute;right:20px;top:18px;z-index:70;
+    background:transparent;border:1px solid var(--edge-strong);color:var(--muted);
+    border-radius:999px;width:40px;height:40px;cursor:pointer;font-size:1.05rem;line-height:1;
+  }
+  .themebtn:hover{color:var(--text)}
+
+  /* ---------- hero ---------- */
+  header.hero{padding:74px 0 20px;text-align:center;position:relative}
+  .eyebrow{
+    display:inline-block;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+    font-weight:700;color:var(--gold-bright);border:1px solid var(--edge-strong);
+    padding:6px 14px;border-radius:999px;margin-bottom:22px;
+  }
+  .hero .lede{margin-inline:auto}
+  .hero__cta{margin:26px 0 10px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .price-line{font-family:Georgia,serif;font-size:1.15rem;color:var(--gold-bright);font-weight:600;margin-bottom:6px}
+
+  /* card illustration */
+  .cardart{
+    width:min(340px,80vw);aspect-ratio:1.586;margin:30px auto 6px;padding:20px;
+    border-radius:16px;position:relative;overflow:hidden;display:flex;
+    flex-direction:column;justify-content:space-between;
+    background:linear-gradient(135deg,#2b2418 0%,#4a3a1d 46%,#7a5f2a 100%);
+    border:1px solid rgba(224,191,120,.35);box-shadow:var(--shadow);
+  }
+  .cardart::after{
+    content:"";position:absolute;inset:-40% -10% auto;height:170%;
+    background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.14) 50%,transparent 58%);
+    animation:sheen 5.5s ease-in-out infinite;
+  }
+  @keyframes sheen{0%,72%{transform:translateX(-58%)}92%,100%{transform:translateX(58%)}}
+  @media (prefers-reduced-motion: reduce){ .cardart::after{animation:none} }
+  .chip{width:44px;height:32px;border-radius:6px;
+        background:linear-gradient(160deg,#e0bf78,#c9a45c);box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
+  .cardart__digits{font-family:Georgia,serif;letter-spacing:.14em;color:#f6ead1;font-size:1.02rem;text-align:left}
+  .cardart__lock{position:absolute;right:18px;bottom:16px}
+
+  /* ---------- sections / layout ---------- */
+  section{padding:56px 0;border-top:1px solid var(--edge)}
+  .grid{display:grid;gap:18px}
+  @media (min-width:760px){ .grid--3{grid-template-columns:repeat(3,1fr)} .grid--2{grid-template-columns:1fr 1fr} }
+
+  .card{
+    background:linear-gradient(180deg,var(--glow),transparent 42%),var(--panel);
+    border:1px solid var(--edge);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);
+  }
+  .card h3{margin-bottom:.4em;color:var(--gold-bright)}
+  .card p:last-child{margin-bottom:0}
+
+  .step__n{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:34px;height:34px;border-radius:999px;margin-bottom:12px;
+    background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:var(--gold-ink);
+    font-weight:800;font-size:.95rem;
+  }
+
+  ul.ticks{list-style:none;padding:0;margin:0}
+  ul.ticks li{position:relative;padding-left:28px;margin-bottom:12px;color:var(--muted)}
+  ul.ticks li::before{content:"✓";position:absolute;left:0;top:0;color:var(--gold);font-weight:800}
+  ul.ticks strong{color:var(--text)}
+
+  /* ciphertext demo */
+  .cipher{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:var(--panel-2);border:1px solid var(--edge);border-radius:12px;
+    padding:16px;font-size:.82rem;color:var(--muted);word-break:break-all;line-height:1.7;
+  }
+  .cipher b{color:var(--good);font-weight:600}
+  .cipher .lbl{display:block;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+               color:var(--gold-bright);margin-bottom:8px;font-family:inherit}
+
+  /* objection block */
+  .objection{border-left:4px solid var(--gold);padding-left:20px}
+  .objection h2{margin-bottom:.4em}
+
+  /* FAQ */
+  details{border:1px solid var(--edge);border-radius:12px;background:var(--panel);margin-bottom:10px}
+  details[open]{border-color:var(--edge-strong)}
+  summary{
+    padding:16px 18px;cursor:pointer;font-weight:600;list-style:none;
+    display:flex;justify-content:space-between;align-items:center;gap:12px;
+  }
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";color:var(--gold-bright);font-size:1.3rem;line-height:1;flex-shrink:0}
+  details[open] summary::after{content:"−"}
+  details .body{padding:0 18px 18px;color:var(--muted)}
+
+  /* final CTA */
+  .final{text-align:center}
+  .final .card{padding:38px 26px}
+
+  /* modal */
+  dialog{
+    border:1px solid var(--edge-strong);border-radius:var(--radius);padding:26px;
+    background:var(--panel);color:var(--text);width:min(560px,92vw);max-height:86vh;overflow-y:auto;
+    box-shadow:0 26px 60px rgba(0,0,0,.55);
+  }
+  dialog::backdrop{background:rgba(8,7,5,.7)}
+  dialog h3{margin-bottom:.5em;color:var(--gold-bright)}
+
+  footer{padding:36px 0 60px;border-top:1px solid var(--edge);color:var(--muted);font-size:.88rem}
+  .warnbox{
+    border:1px solid var(--warn);border-radius:12px;padding:16px 18px;margin-bottom:20px;
+    background:color-mix(in srgb,var(--warn) 10%,transparent);color:var(--text);font-size:.92rem;
+  }
+
+  /* Scroll reveal. Hidden ONLY once JS has confirmed it will reveal them —
+     without JS (or if the observer never runs) the content stays visible. */
+  .js .reveal{opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease}
+  .js .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion: reduce){
+    .js .reveal{opacity:1;transform:none;transition:none}
+  }
+</style>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="sticky" id="stickybar">
+  <div class="sticky__in">
+    <span class="sticky__name" data-gumroad-field="name">CardVault Pro</span>
+    <span class="sticky__price" data-gumroad-field="price">$19</span>
+    <a class="btn btn--sm" data-gumroad-action="buy" href="#">Get it</a>
+  </div>
+</div>
+
+<button class="themebtn" id="themebtn" type="button" aria-label="Switch between light and dark theme">☾</button>
+
+<header class="hero wrap">
+  <span class="eyebrow">Zero-knowledge card vault</span>
+  <h1>Every card you own, encrypted before we ever see it.</h1>
+
+  <div class="cardart" aria-hidden="true">
+    <span class="chip"></span>
+    <span class="cardart__digits">•••• •••• •••• 4242</span>
+    <svg class="cardart__lock" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f6ead1" stroke-width="2">
+      <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+      <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+    </svg>
+  </div>
+
+  <p class="lede">Scan a card with your phone camera, lock it with a passphrase only you know,
+     and pull it up anytime. The encryption happens on your device — the server only ever
+     stores scrambled text it cannot read.</p>
+
+  <p class="price-line" style="margin-top:22px">
+    <span data-gumroad-field="price">$19</span> · <span data-gumroad-field="name">CardVault Pro</span>
+  </p>
+  <div class="hero__cta">
+    <a class="btn" data-gumroad-action="buy" href="#">I want this</a>
+    <button class="btn btn--ghost" type="button" id="how-btn">How the encryption works</button>
+  </div>
+  <p class="muted" style="font-size:.86rem">Two cards free forever · cancel any time · no passphrase recovery, by design</p>
+</header>
+
+<main id="main">
+
+  <section class="wrap reveal">
+    <h2>Three taps, and it's sealed</h2>
+    <div class="grid grid--3">
+      <div class="card">
+        <span class="step__n">1</span>
+        <h3>Scan</h3>
+        <p class="muted">Point your camera at the card. The number is read on your device —
+           no photo is ever uploaded, not even to be processed.</p>
+      </div>
+      <div class="card">
+        <span class="step__n">2</span>
+        <h3>Encrypt</h3>
+        <p class="muted">Your passphrase derives a key in the browser and locks the card with
+           AES-256-GCM before a single byte leaves the device.</p>
+      </div>
+      <div class="card">
+        <span class="step__n">3</span>
+        <h3>Retrieve</h3>
+        <p class="muted">Open the vault, enter your passphrase, read the number. It's decrypted
+           on your screen and nowhere else.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap reveal">
+    <div class="grid grid--2" style="align-items:center">
+      <div>
+        <h2>What the server actually stores</h2>
+        <p class="muted">Not a promise — a consequence of how it's built. If someone breached
+           the database tomorrow, this is everything they'd get for your card:</p>
+        <ul class="ticks" style="margin-top:18px">
+          <li><strong>The brand and last four digits</strong> — the same digits printed on
+              every receipt you've thrown away.</li>
+          <li><strong>Ciphertext no one can open</strong> without the passphrase that never
+              left your device.</li>
+          <li><strong>No passphrase, no key, no recovery path</strong> — there is nothing
+              stored that could reconstruct it.</li>
+        </ul>
+      </div>
+      <div class="cipher">
+        <span class="lbl">Database row</span>
+        label: <b>"Personal Visa"</b><br>
+        brand: <b>"Visa"</b> · last4: <b>"4242"</b><br>
+        ciphertext: lWO1CMWA6ya7xQ3JC7URlCQ4tGff1JR6d6EZJXRZUp+E9k2c<br>
+        iv: bDJnE2fG580a/w8O<br>
+        salt: TAqxk2sRy6U5JQ85luSp
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap reveal">
+    <div class="objection">
+      <h2>"So I'm supposed to trust a website with my credit cards?"</h2>
+      <p class="muted">Fair question — and honestly, you shouldn't have to. That's the whole
+         design. Your card is encrypted <em>in your browser</em> with a key derived from your
+         passphrase, before anything is sent. We never receive the number, we can't decrypt
+         what we store, and we can't reset your passphrase — because we genuinely don't have it.</p>
+      <p class="muted">The trade-off is real: lose your passphrase and those cards are gone.
+         We think that's the right trade. The alternative — a company that <em>can</em> recover
+         your data — is a company that can leak it.</p>
+    </div>
+  </section>
+
+  <section class="wrap reveal">
+    <h2>What you get</h2>
+    <div class="card">
+      <p data-gumroad-field="description">Unlimited encrypted cards, on every device. The same
+         zero-knowledge encryption as the free plan — Pro simply removes the two-card ceiling.</p>
+      <div style="margin-top:20px">
+        <a class="btn btn--block" data-gumroad-action="buy" href="#"><span>Get <span
+          data-gumroad-field="name">CardVault Pro</span> — <span
+          data-gumroad-field="price">$19</span></span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap reveal">
+    <h2>Questions people ask first</h2>
+
+    <details>
+      <summary>What happens if I forget my passphrase?</summary>
+      <div class="body">Your stored cards become permanently unreadable. There is no reset link
+        and no support route around it — nobody holds a copy of your key. Write the passphrase
+        down somewhere physical before you rely on the vault.</div>
+    </details>
+
+    <details>
+      <summary>Do you ever see my card number?</summary>
+      <div class="body">No. Encryption happens in your browser before the request is sent. The
+        server receives ciphertext plus the brand and last four digits for display, and it
+        rejects anything that looks like a full card number as a safety net.</div>
+    </details>
+
+    <details>
+      <summary>Does the camera upload my card photo?</summary>
+      <div class="body">No. The frame is read on your device and discarded. Nothing about the
+        scan is transmitted — the only thing that ever leaves is the encrypted result.</div>
+    </details>
+
+    <details>
+      <summary>What if I cancel?</summary>
+      <div class="body">Your existing cards stay encrypted and readable. You simply can't add
+        beyond the free limit again. Cancelling never deletes your data.</div>
+    </details>
+
+    <details>
+      <summary>Which devices work?</summary>
+      <div class="body">Any modern browser with a camera — iPhone, Android, laptop. Scanning
+        needs an HTTPS connection, which the app always uses.</div>
+    </details>
+  </section>
+
+  <section class="wrap final reveal">
+    <div class="card">
+      <h2 style="margin-bottom:.3em">Stop keeping card numbers in your notes app</h2>
+      <p class="muted" style="max-width:46ch;margin-inline:auto">That's where most people keep
+         them, and it's one stolen phone away from disaster. Give them a real home instead.</p>
+      <p class="price-line" style="margin-top:18px" data-gumroad-field="price">$19</p>
+      <a class="btn" data-gumroad-action="buy" href="#">I want this</a>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <div class="warnbox">
+    <strong>Before you buy:</strong> there is no passphrase recovery. If you lose your
+    passphrase, the cards you stored cannot be recovered by anyone, including us. That is the
+    property that makes the vault worth having.
+  </div>
+  <p>CardVault encrypts card data client-side with AES-256-GCM. Because full card numbers never
+     reach the server, there is nothing readable to leak.</p>
+</footer>
+
+<dialog id="how-modal" aria-labelledby="how-title">
+  <h3 id="how-title">How the encryption works</h3>
+  <p class="muted">When you save a card, your browser derives a 256-bit key from your passphrase
+     using PBKDF2-SHA256 with 310,000 iterations and a fresh random salt for every card.</p>
+  <p class="muted">That key encrypts the card number, expiry and holder name with AES-256-GCM,
+     using a fresh random initialisation vector. Only the resulting ciphertext, the salt and the
+     IV are uploaded — along with the brand and last four digits so the vault list is readable
+     at a glance.</p>
+  <p class="muted">The passphrase itself is never transmitted, never stored, and never derivable
+     from what we hold. That is why we cannot reset it for you.</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
+    <a class="btn" data-gumroad-action="buy" href="#">I want this</a>
+    <button class="btn btn--ghost" type="button" id="how-close">Close</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+
+  // Opt in to the reveal animation only now that JS is definitely running.
+  // Until this line, .reveal content is plain visible — so a script failure
+  // can never leave the page blank.
+  document.documentElement.classList.add("js");
+
+  // ---------- theme ----------
+  var root = document.documentElement, tbtn = document.getElementById("themebtn");
+  function prefersLight() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  }
+  function current() {
+    return root.getAttribute("data-theme") || (prefersLight() ? "light" : "dark");
+  }
+  function paint() { tbtn.textContent = current() === "light" ? "☾" : "☀"; }
+  tbtn.addEventListener("click", function () {
+    root.setAttribute("data-theme", current() === "light" ? "dark" : "light");
+    paint();
+  });
+  paint();
+
+  // ---------- sticky buy bar, after the hero scrolls away ----------
+  var bar = document.getElementById("stickybar");
+  function onScroll() {
+    if (window.scrollY > 520) bar.classList.add("show");
+    else bar.classList.remove("show");
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  // ---------- scroll reveal (skipped when reduced motion is requested) ----------
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var items = document.querySelectorAll(".reveal");
+  if (reduce || !("IntersectionObserver" in window)) {
+    Array.prototype.forEach.call(items, function (el) { el.classList.add("in"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.06 });
+    Array.prototype.forEach.call(items, function (el) { io.observe(el); });
+
+    // Safety net: fast scrolling can outrun the observer, and a section that
+    // is never marked visible would stay invisible for good. This is a sales
+    // page — no copy may go permanently missing, so reveal anything left.
+    setTimeout(function () {
+      io.disconnect();
+      Array.prototype.forEach.call(items, function (el) { el.classList.add("in"); });
+    }, 4000);
+  }
+
+  // ---------- modal ----------
+  var modal = document.getElementById("how-modal");
+  var openBtn = document.getElementById("how-btn");
+  var closeBtn = document.getElementById("how-close");
+  var lastFocus = null;
+  openBtn.addEventListener("click", function () {
+    lastFocus = document.activeElement;
+    if (typeof modal.showModal === "function") modal.showModal();
+    else modal.setAttribute("open", "");
+  });
+  function shut() {
+    if (typeof modal.close === "function") modal.close();
+    else modal.removeAttribute("open");
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  closeBtn.addEventListener("click", shut);
+  modal.addEventListener("click", function (e) { if (e.target === modal) shut(); });
+})();
+</script>
