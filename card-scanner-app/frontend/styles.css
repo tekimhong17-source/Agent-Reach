@@ -191,7 +191,12 @@ button.danger { color: var(--danger); }
 @media (max-width: 600px) {
   #user-email { display: none; }
   h1 { font-size: 1.2rem; }
-  header { padding: 16px 0; }
+  header { padding: 16px 0; flex-wrap: wrap; row-gap: 10px; }
+  /* A Pro account carries an extra "Billing" button. Rather than let the row
+     push "Log out" off the screen, allow the account controls to drop onto
+     their own line — the header must fit whatever the plan adds to it. */
+  #user-box { width: 100%; justify-content: flex-end; }
+  #user-box button { padding: 8px 12px; font-size: 0.88rem; }
 }
 
 /* ---------- landing hero ---------- */
