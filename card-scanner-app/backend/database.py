@@ -103,6 +103,18 @@ def set_plan(user_id: int, plan: str, subscription_id: str | None = None) -> Non
             conn.execute("UPDATE users SET plan = ? WHERE id = ?", (plan, user_id))
 
 
+def recent_users(limit: int = 20) -> list[dict[str, Any]]:
+    """Newest accounts first — for the admin CLI to find who to fix up."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT u.id, u.email, u.plan, u.subscription_id, u.created_at,
+                      (SELECT COUNT(*) FROM cards c WHERE c.user_id = u.id) AS cards
+               FROM users u ORDER BY u.created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_user_by_subscription(subscription_id: str) -> dict[str, Any] | None:
     with connect() as conn:
         row = conn.execute(
