@@ -130,22 +130,28 @@ deployment means purchases never grant access.
 
 ## 4. Launch checklist
 
-Gumroad has no global test mode, so use a **100% off discount code** on each
-product to run the flow end to end without moving money.
+Gumroad automatically treats a purchase by the product's creator as a **test
+purchase** — it shows "your payment method will not be charged" at checkout —
+so you can walk the whole flow signed in as yourself without moving money. (A
+100% off discount code works too, if you want to test as someone else.)
 
 1. `python -m backend.check_billing` reports no failures.
 2. Fresh browser on your phone: register → add 2 cards → paywall appears →
-   click "Yearly — $19" → Gumroad checkout opens → complete it with the 100%
-   off code → back on the site, "finalizing your upgrade" resolves to a PRO
-   badge → add a 3rd card.
+   click "Yearly — $19" → Gumroad checkout opens → complete it (it will say
+   "will not be charged") → back on the site, "finalizing your upgrade"
+   resolves to a PRO badge → add a 3rd card.
 3. Repeat for the lifetime product; the badge should read LIFETIME.
 4. Camera scan works over HTTPS on a real phone (getUserMedia requires it).
-5. Delete the discount codes, then buy one plan with a real card to confirm
-   the live path. Refund yourself from Gumroad afterwards.
-
-6. Prove persistence before launch: add a card, redeploy the service, log
-   back in. If the card is still there, the volume is mounted correctly. If
-   it vanished, `CARDVAULT_DB` is not on the volume — fix that first.
+5. Check every product is priced in the **same currency** as the paywall
+   quotes (USD). A product created in another currency shows buyers a
+   different number than the button they clicked;
+   `python -m backend.check_billing` flags this.
+6. Prove persistence: add a card, redeploy the service, log back in. If the
+   card is still there, the volume is mounted correctly. If it vanished,
+   `CARDVAULT_DB` is not on the volume — fix that before launch.
+7. Ask someone else to buy one plan with a real card to confirm the live
+   path — your own purchases are always test purchases. Refund them
+   afterwards from Gumroad.
 
 ## Invariants for any other host (Fly.io, Koyeb, a VPS)
 

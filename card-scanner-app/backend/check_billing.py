@@ -126,7 +126,16 @@ def _run(client: httpx.Client) -> list[Check]:
         warnings: list[str] = []
         price = product.get("price")
         recurring = product.get("is_recurring_billing")
-        if price is not None and price != want["price"]:
+        # Currency first: a product priced in another currency looks like a
+        # wildly wrong price, when really only the currency is wrong. The
+        # paywall quotes USD, so anything else is a mismatch the buyer sees
+        # between the button they clicked and the checkout they land on.
+        currency = (product.get("currency") or "").lower()
+        if currency and currency != "usd":
+            warnings.append(
+                f"priced in {currency.upper()}, but the paywall quotes USD — buyers click "
+                f"'{_money(want['price'])}' and land on a {currency.upper()} checkout")
+        elif price is not None and price != want["price"]:
             warnings.append(
                 f"price is {_money(price)} but the paywall advertises {_money(want['price'])}")
         if recurring is not None and bool(recurring) != want["recurring"]:

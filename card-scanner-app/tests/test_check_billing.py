@@ -90,6 +90,18 @@ def test_wrong_price_warns_without_failing(env):
     assert "$29.00" in check.warnings[0] and "$19.00" in check.warnings[0]
 
 
+def test_product_in_another_currency_is_flagged(env):
+    """A PHP-priced product looks like a huge price error; name the real cause."""
+    bad = GOOD_PRODUCTS[:2] + [dict(GOOD_PRODUCTS[2], currency="php", price=240213)]
+    out = results(make_client(products=bad))
+    check = out["Lifetime plan product"]
+    assert check.ok and check.warnings
+    assert "priced in PHP" in check.warnings[0]
+    assert "$39.00" in check.warnings[0]
+    # the confusing raw-price complaint must not also fire
+    assert not any("price is" in w for w in check.warnings)
+
+
 def test_lifetime_sold_as_subscription_is_flagged(env):
     bad = GOOD_PRODUCTS[:2] + [dict(GOOD_PRODUCTS[2], is_recurring_billing=True)]
     out = results(make_client(products=bad))
