@@ -41,16 +41,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-# Which Lemon Squeezy variant each purchasable tier maps to. Yearly is the
-# default because the per-transaction fee eats ~22% of a $2.99 monthly charge
-# but only ~7.6% of a $19 annual one.
-TIER_VARIANT_ENV = {
-    "yearly": "LEMONSQUEEZY_ANNUAL_VARIANT_ID",
-    "monthly": "LEMONSQUEEZY_VARIANT_ID",
-    "lifetime": "LEMONSQUEEZY_LIFETIME_VARIANT_ID",
-}
-
-
 class CheckoutRequest(BaseModel):
     tier: str = Field(default="yearly", pattern="^(yearly|monthly|lifetime)$")
 
@@ -177,18 +167,16 @@ def checkout(
     if not billing.is_configured():
         raise HTTPException(
             status_code=503,
-            detail="Billing is not configured (set LEMONSQUEEZY_API_KEY, "
-            "LEMONSQUEEZY_STORE_ID and LEMONSQUEEZY_VARIANT_ID)",
+            detail="Billing is not configured (set GUMROAD_ACCESS_TOKEN)",
         )
-    env_key = TIER_VARIANT_ENV[tier]
-    variant = os.environ.get(env_key)
-    if not variant:
+    env_key = billing.TIER_URL_ENV[tier]
+    if not os.environ.get(env_key):
         raise HTTPException(
             status_code=503,
             detail=f"The {tier} plan is not configured (set {env_key})",
         )
     try:
-        return {"url": billing.create_checkout_session(user, variant_id=variant)}
+        return {"url": billing.create_checkout_session(user, tier=tier)}
     except billing.BillingUnavailable as exc:
         raise HTTPException(
             status_code=502,
@@ -214,10 +202,16 @@ def billing_portal(user: dict[str, Any] = Depends(current_user)) -> dict[str, st
 
 @app.post("/api/billing/webhook")
 async def billing_webhook(request: Request) -> dict[str, str]:
-    payload = await request.body()
-    signature = request.headers.get("x-signature", "")
+    # Gumroad pings are form-encoded, with the shared secret in the query
+    # string (the ping URL you configure ends in ?token=...).
+    form = {k: str(v) for k, v in (await request.form()).items()}
+    token = request.query_params.get("token", "")
     try:
-        return billing.handle_webhook(payload, signature)
+        return billing.handle_webhook(form, token)
+    except billing.BillingUnavailable as exc:
+        # Could not reach Gumroad to verify the sale. Answer 5xx so Gumroad
+        # retries rather than dropping a real purchase on the floor.
+        raise HTTPException(status_code=503, detail="verification unavailable") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

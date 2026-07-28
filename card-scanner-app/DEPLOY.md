@@ -25,12 +25,11 @@ moves to Postgres.
    |---|---|
    | `CARDVAULT_DB` | `/data/cardvault.db` |
    | `CARDVAULT_BASE_URL` | the public URL you are actually browsing (see below) |
-   | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
-   | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
-   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the monthly subscription |
-   | `LEMONSQUEEZY_ANNUAL_VARIANT_ID` | variant ID of the yearly subscription |
-   | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
-   | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
+   | `GUMROAD_ACCESS_TOKEN` | Gumroad → Settings → Advanced → Applications |
+   | `GUMROAD_YEARLY_URL` | product URL of the $19/year subscription |
+   | `GUMROAD_MONTHLY_URL` | product URL of the $2.99/month subscription |
+   | `GUMROAD_LIFETIME_URL` | product URL of the $39 one-time product (optional) |
+   | `GUMROAD_WEBHOOK_SECRET` | any long random string you invent |
 
    Do **not** set `CARDVAULT_DEV` — it exposes a free-upgrade endpoint meant
    for local testing only. Do **not** set `PORT`; Railway injects it and the
@@ -68,12 +67,11 @@ Manual Render setup, if you prefer clicking:
    |---|---|
    | `CARDVAULT_DB` | `/data/cardvault.db` |
    | `CARDVAULT_BASE_URL` | `https://trycardvault.com` |
-   | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
-   | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
-   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the monthly subscription |
-   | `LEMONSQUEEZY_ANNUAL_VARIANT_ID` | variant ID of the yearly subscription |
-   | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
-   | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
+   | `GUMROAD_ACCESS_TOKEN` | Gumroad → Settings → Advanced → Applications |
+   | `GUMROAD_YEARLY_URL` | product URL of the $19/year subscription |
+   | `GUMROAD_MONTHLY_URL` | product URL of the $2.99/month subscription |
+   | `GUMROAD_LIFETIME_URL` | product URL of the $39 one-time product (optional) |
+   | `GUMROAD_WEBHOOK_SECRET` | any long random string you invent |
 
    Do **not** set `CARDVAULT_DEV` in production — it exposes a free-upgrade
    endpoint meant for local testing only.
@@ -102,63 +100,48 @@ upgrade looks broken.
 4. Make `www` redirect to the apex so there is exactly one canonical URL.
 5. Update `CARDVAULT_BASE_URL` to `https://trycardvault.com`.
 
-## 3. Wire Lemon Squeezy to the live domain
+## 3. Wire Gumroad to the live domain
 
-You need **two products** — one subscription with two variants, and one
-one-time product — plus a webhook. Do it in this order.
+Create **three products** in Gumroad. There are no numeric IDs to find — you
+copy each product's URL.
 
-1. **Create the subscription product.** Products → New Product → name it
-   "CardVault Pro". Set its price to **$2.99, billing period Monthly**. Save.
-2. **Add the yearly variant to that same product.** Open the product →
-   Variants → add a second variant priced **$19, billing period Yearly**.
-   Two variants on one product is what lets buyers choose; a separate
-   product would work too, but this keeps the dashboard tidy.
-3. **Create the lifetime product.** Products → New Product → "CardVault Pro
-   Lifetime", price **$39**, and set it to a **one-time payment**, not a
-   subscription. This is the step most people get wrong — if it is created
-   as a subscription, buyers get charged repeatedly for a "lifetime" plan.
-4. **Create an API key.** Settings → API → new key. Copy it into
-   `LEMONSQUEEZY_API_KEY`.
-5. **Find the numeric IDs without hunting.** With the API key set, run:
+1. "CardVault Pro Yearly" — **$19, recurring, yearly**
+2. "CardVault Pro Monthly" — **$2.99, recurring, monthly**
+3. "CardVault Pro Lifetime" — **$39, one-time payment**, *not* a subscription.
+   This is the step most people get wrong; created as a subscription, buyers
+   get charged repeatedly for a "lifetime" plan.
 
-   ```bash
-   cd card-scanner-app
-   python -m backend.check_billing --list
-   ```
+Publish all three — an unpublished product cannot be bought.
 
-   It prints every store, product and variant with its ID, and suggests which
-   environment variable each one belongs in. Copy those into your host.
+Then, with the environment variables set:
 
-6. **Add the webhook.** Settings → Webhooks → new webhook:
-   - URL: `https://trycardvault.com/api/billing/webhook` (or your current
-     `*.up.railway.app` URL — it must match `CARDVAULT_BASE_URL`)
-   - Events: `subscription_created`, `subscription_expired`, `order_created`
-   - Signing secret: choose one, and put the same string in
-     `LEMONSQUEEZY_WEBHOOK_SECRET`
-7. **Verify the whole thing before trusting it:**
+```bash
+cd card-scanner-app
+python -m backend.check_billing --list              # products + the env var each belongs in
+python -m backend.check_billing --register-webhook  # point Gumroad at this deployment
+python -m backend.check_billing                     # verify everything
+```
 
-   ```bash
-   python -m backend.check_billing
-   ```
+`--register-webhook` subscribes Gumroad's `sale`, `cancellation` and
+`subscription_ended` events to
+`https://trycardvault.com/api/billing/webhook?token=<your secret>`. Re-run it
+whenever the public URL changes — a webhook still pointing at an old
+deployment means purchases never grant access.
 
-   It asks Lemon Squeezy directly whether the key works, the store exists,
-   each variant has the price and billing period the paywall advertises, and
-   the webhook points at this deployment with all three events. Every failure
-   names the exact thing to fix. It is read-only — it never charges anything.
+## 4. Launch checklist
 
-8. Keep the store in **test mode** until the launch checklist below passes.
+Gumroad has no global test mode, so use a **100% off discount code** on each
+product to run the flow end to end without moving money.
 
-## 4. Launch checklist (run in Lemon Squeezy test mode)
-
-1. Fresh browser on your phone: register → scan/add 2 cards → paywall
-   appears → checkout with test card `4242 4242 4242 4242` → redirected back
-   → "finalizing your upgrade" resolves to a PRO badge → add a 3rd card.
-2. Webhook delivery log in Lemon Squeezy shows 200s.
-3. "Manage billing" opens the customer portal; cancel the test subscription;
-   after the period expires the account drops to FREE and cards remain.
+1. `python -m backend.check_billing` reports no failures.
+2. Fresh browser on your phone: register → add 2 cards → paywall appears →
+   click "Yearly — $19" → Gumroad checkout opens → complete it with the 100%
+   off code → back on the site, "finalizing your upgrade" resolves to a PRO
+   badge → add a 3rd card.
+3. Repeat for the lifetime product; the badge should read LIFETIME.
 4. Camera scan works over HTTPS on a real phone (getUserMedia requires it).
-5. Flip the store to live mode, submit it for activation review, and repeat
-   step 1 once with a real card. Refund yourself from the dashboard.
+5. Delete the discount codes, then buy one plan with a real card to confirm
+   the live path. Refund yourself from Gumroad afterwards.
 
 6. Prove persistence before launch: add a card, redeploy the service, log
    back in. If the card is still there, the volume is mounted correctly. If

@@ -1,13 +1,14 @@
-"""Verify the Lemon Squeezy setup before trusting it with real money.
+"""Verify the Gumroad setup before trusting it with real money.
 
 Run from card-scanner-app/ with your billing environment variables set:
 
-    python -m backend.check_billing
+    python -m backend.check_billing          # verify the setup
+    python -m backend.check_billing --list   # show your Gumroad products
 
-It answers the question "did I wire the dashboard up correctly?" by asking
-Lemon Squeezy directly: is the API key valid, does the store exist, does each
-variant ID point at a product with the price and billing period this app
-expects, and is the webhook pointing at this deployment with the right events.
+It answers "did I wire this up correctly?" by asking Gumroad directly: is the
+access token valid, does each configured product URL exist in your account,
+does each carry the price and recurrence the paywall advertises, and is the
+sale webhook pointing at this deployment.
 
 Every failure names the exact thing to fix. Nothing here writes or charges
 anything — it is read-only.
@@ -21,23 +22,15 @@ from dataclasses import dataclass, field
 
 import httpx
 
-API_BASE = "https://api.lemonsqueezy.com/v1"
+from .billing import API_BASE, TIER_URL_ENV, permalink_of
 
-# What the paywall promises, so the checker can tell you when the dashboard
-# disagrees with the app. Prices are in cents, as Lemon Squeezy returns them.
+# What the paywall promises, so the checker can tell you when Gumroad
+# disagrees with the app. Prices are in cents, as Gumroad returns them.
 EXPECTED = {
-    "LEMONSQUEEZY_ANNUAL_VARIANT_ID": {
-        "label": "Yearly plan", "price": 1900, "interval": "year", "subscription": True,
-    },
-    "LEMONSQUEEZY_VARIANT_ID": {
-        "label": "Monthly plan", "price": 299, "interval": "month", "subscription": True,
-    },
-    "LEMONSQUEEZY_LIFETIME_VARIANT_ID": {
-        "label": "Lifetime plan", "price": 3900, "interval": None, "subscription": False,
-    },
+    "yearly": {"label": "Yearly plan", "price": 1900, "recurring": True},
+    "monthly": {"label": "Monthly plan", "price": 299, "recurring": True},
+    "lifetime": {"label": "Lifetime plan", "price": 3900, "recurring": False},
 }
-
-REQUIRED_EVENTS = {"subscription_created", "subscription_expired", "order_created"}
 
 
 @dataclass
@@ -49,12 +42,8 @@ class Check:
     warnings: list[str] = field(default_factory=list)
 
 
-def _headers(api_key: str) -> dict[str, str]:
-    return {
-        "Accept": "application/vnd.api+json",
-        "Content-Type": "application/vnd.api+json",
-        "Authorization": f"Bearer {api_key}",
-    }
+def _headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _money(cents: object) -> str:
@@ -65,205 +54,198 @@ def _money(cents: object) -> str:
 
 
 def run_checks(client: httpx.Client | None = None) -> list[Check]:
-    owns_client = client is None
+    owns = client is None
     client = client or httpx.Client(timeout=20)
-    checks: list[Check] = []
     try:
-        checks.extend(_run(client))
+        return _run(client)
     finally:
-        if owns_client:
+        if owns:
             client.close()
-    return checks
 
 
 def _run(client: httpx.Client) -> list[Check]:
     checks: list[Check] = []
-
-    api_key = os.environ.get("LEMONSQUEEZY_API_KEY", "")
-    store_id = os.environ.get("LEMONSQUEEZY_STORE_ID", "")
+    token = os.environ.get("GUMROAD_ACCESS_TOKEN", "")
     base_url = os.environ.get("CARDVAULT_BASE_URL", "")
+    secret = os.environ.get("GUMROAD_WEBHOOK_SECRET", "")
 
-    # 1. Environment variables -------------------------------------------------
-    missing = [k for k in ("LEMONSQUEEZY_API_KEY", "LEMONSQUEEZY_STORE_ID",
-                           "LEMONSQUEEZY_WEBHOOK_SECRET", "CARDVAULT_BASE_URL")
-               if not os.environ.get(k)]
+    # 1. Environment -----------------------------------------------------------
+    missing = [k for k in ("GUMROAD_ACCESS_TOKEN", "GUMROAD_WEBHOOK_SECRET",
+                           "CARDVAULT_BASE_URL") if not os.environ.get(k)]
     checks.append(Check(
-        "Environment variables set",
-        not missing,
+        "Environment variables set", not missing,
         "all core variables present" if not missing else f"missing: {', '.join(missing)}",
         "Set them on your host (Railway → Variables), then redeploy.",
     ))
-    if not api_key:
-        return checks  # nothing else can be checked without a key
-
-    # 2. API key ---------------------------------------------------------------
-    try:
-        r = client.get(f"{API_BASE}/users/me", headers=_headers(api_key))
-        if r.status_code == 200:
-            who = r.json().get("data", {}).get("attributes", {})
-            checks.append(Check("API key valid", True,
-                                f"authenticated as {who.get('email') or who.get('name') or 'unknown'}"))
-        else:
-            checks.append(Check("API key valid", False, f"HTTP {r.status_code}",
-                                "Create a fresh key at Lemon Squeezy → Settings → API "
-                                "and set LEMONSQUEEZY_API_KEY."))
-            return checks
-    except httpx.HTTPError as exc:
-        checks.append(Check("API key valid", False, f"could not reach Lemon Squeezy: {exc}",
-                            "Check network/proxy access to api.lemonsqueezy.com."))
+    if not token:
         return checks
 
-    # 3. Store -----------------------------------------------------------------
-    if store_id:
-        r = client.get(f"{API_BASE}/stores/{store_id}", headers=_headers(api_key))
-        if r.status_code == 200:
-            a = r.json().get("data", {}).get("attributes", {})
-            checks.append(Check("Store ID valid", True,
-                                f"{a.get('name', '?')} ({a.get('slug', '?')})"))
-        else:
-            checks.append(Check("Store ID valid", False, f"HTTP {r.status_code}",
-                                "Find the numeric store ID in the Lemon Squeezy URL "
-                                "when your store is open, and set LEMONSQUEEZY_STORE_ID."))
+    # 2. Access token ----------------------------------------------------------
+    try:
+        r = client.get(f"{API_BASE}/user", headers=_headers(token))
+    except httpx.HTTPError as exc:
+        checks.append(Check("Access token valid", False, f"could not reach Gumroad: {exc}",
+                            "Check network access to api.gumroad.com."))
+        return checks
+    if r.status_code != 200 or not r.json().get("success", True):
+        checks.append(Check("Access token valid", False, f"HTTP {r.status_code}",
+                            "Create a token at Gumroad → Settings → Advanced → "
+                            "Applications, and set GUMROAD_ACCESS_TOKEN."))
+        return checks
+    user = r.json().get("user", {})
+    checks.append(Check("Access token valid", True,
+                        f"authenticated as {user.get('email') or user.get('name') or 'unknown'}"))
 
-    # 4. Each plan variant -----------------------------------------------------
-    for env_key, want in EXPECTED.items():
-        variant_id = os.environ.get(env_key)
-        if not variant_id:
-            optional = env_key == "LEMONSQUEEZY_LIFETIME_VARIANT_ID"
+    # 3. Products --------------------------------------------------------------
+    products_resp = client.get(f"{API_BASE}/products", headers=_headers(token))
+    products = products_resp.json().get("products", []) if products_resp.status_code == 200 else []
+    by_permalink = {p.get("short_url", "") and permalink_of(p["short_url"]): p for p in products}
+    by_permalink.update({p.get("permalink"): p for p in products if p.get("permalink")})
+
+    for tier, want in EXPECTED.items():
+        env_key = TIER_URL_ENV[tier]
+        url = os.environ.get(env_key)
+        if not url:
+            optional = tier == "lifetime"
             checks.append(Check(
-                f"{want['label']} variant", optional,
+                f"{want['label']} product", optional,
                 "not configured" + (" (optional — button will 503)" if optional else ""),
-                f"Set {env_key} to the variant ID of the {want['label'].lower()}.",
+                f"Set {env_key} to the product's Gumroad URL.",
             ))
             continue
 
-        r = client.get(f"{API_BASE}/variants/{variant_id}", headers=_headers(api_key))
-        if r.status_code != 200:
-            checks.append(Check(f"{want['label']} variant", False,
-                                f"variant {variant_id} not found (HTTP {r.status_code})",
-                                f"Open the variant in Lemon Squeezy; its numeric ID goes in {env_key}."))
+        product = by_permalink.get(permalink_of(url))
+        if not product:
+            checks.append(Check(
+                f"{want['label']} product", False,
+                f"no product in your account matches {url}",
+                f"Copy the product's URL from Gumroad (Share → link) into {env_key}.",
+            ))
             continue
 
-        a = r.json().get("data", {}).get("attributes", {})
         warnings: list[str] = []
-        price, interval = a.get("price"), a.get("interval")
-        is_sub = a.get("is_subscription")
-
+        price = product.get("price")
+        recurring = product.get("is_recurring_billing")
         if price is not None and price != want["price"]:
             warnings.append(
                 f"price is {_money(price)} but the paywall advertises {_money(want['price'])}")
-        if want["subscription"] and interval != want["interval"]:
-            warnings.append(
-                f"billing period is {interval!r}, expected {want['interval']!r}")
-        if is_sub is not None and bool(is_sub) != want["subscription"]:
-            kind = "a subscription" if is_sub else "a one-time purchase"
-            expected_kind = "a subscription" if want["subscription"] else "a one-time purchase"
-            warnings.append(f"this variant is {kind}, but {want['label']} must be {expected_kind}")
+        if recurring is not None and bool(recurring) != want["recurring"]:
+            is_kind = "a subscription" if recurring else "a one-time purchase"
+            want_kind = "a subscription" if want["recurring"] else "a one-time purchase"
+            warnings.append(f"this product is {is_kind}, but {want['label']} must be {want_kind}")
+        if product.get("published") is False:
+            warnings.append("product is unpublished — buyers cannot reach it")
 
         checks.append(Check(
-            f"{want['label']} variant", True,
-            f"{a.get('name', '?')} — {_money(price)}"
-            + (f" / {interval}" if interval else " one-time"),
-            "Fix the variant in Lemon Squeezy, or update the paywall copy to match."
+            f"{want['label']} product", True,
+            f"{product.get('name', '?')} — {_money(price)}"
+            + (" recurring" if recurring else " one-time"),
+            "Fix the product in Gumroad, or update the paywall copy to match."
             if warnings else "",
             warnings,
         ))
 
-    # 5. Webhook ---------------------------------------------------------------
-    if store_id:
-        r = client.get(f"{API_BASE}/webhooks", headers=_headers(api_key),
-                       params={"filter[store_id]": store_id})
-        if r.status_code != 200:
-            checks.append(Check("Webhook configured", False, f"HTTP {r.status_code}",
-                                "Check the API key's permissions."))
+    # 4. Webhook ---------------------------------------------------------------
+    want_url = f"{base_url.rstrip('/')}/api/billing/webhook?token={secret}" if base_url else None
+    subs_resp = client.get(f"{API_BASE}/resource_subscriptions",
+                           headers=_headers(token), params={"resource_name": "sale"})
+    if subs_resp.status_code != 200:
+        checks.append(Check(
+            "Sale webhook registered", False, f"HTTP {subs_resp.status_code}",
+            "Register it once with: python -m backend.check_billing --register-webhook"))
+    else:
+        subs = subs_resp.json().get("resource_subscriptions", [])
+        urls = [s.get("post_url", "") for s in subs]
+        if not subs:
+            checks.append(Check(
+                "Sale webhook registered", False, "no sale webhook on this account",
+                f"Register it: python -m backend.check_billing --register-webhook "
+                f"(it will point at {want_url})"))
+        elif want_url and want_url not in urls:
+            checks.append(Check(
+                "Webhook points at this deployment", False,
+                f"registered: {', '.join(urls)} — expected {want_url}",
+                "Re-register with --register-webhook, or fix CARDVAULT_BASE_URL. "
+                "If they disagree, purchases will never grant access."))
         else:
-            hooks = r.json().get("data", [])
-            want_url = f"{base_url.rstrip('/')}/api/billing/webhook" if base_url else None
-            match = next((h for h in hooks
-                          if h.get("attributes", {}).get("url") == want_url), None)
-            if not hooks:
-                checks.append(Check(
-                    "Webhook configured", False, "no webhooks on this store",
-                    f"Add one at Settings → Webhooks pointing to {want_url or '<your-url>/api/billing/webhook'} "
-                    f"with events: {', '.join(sorted(REQUIRED_EVENTS))}."))
-            elif not match:
-                urls = ", ".join(h.get("attributes", {}).get("url", "?") for h in hooks)
-                checks.append(Check(
-                    "Webhook points at this deployment", False,
-                    f"found {urls}, but CARDVAULT_BASE_URL implies {want_url}",
-                    "Either fix the webhook URL in Lemon Squeezy or fix CARDVAULT_BASE_URL. "
-                    "If they disagree, upgrades will never arrive."))
-            else:
-                events = set(match.get("attributes", {}).get("events", []))
-                lacking = REQUIRED_EVENTS - events
-                checks.append(Check(
-                    "Webhook configured", not lacking,
-                    f"{want_url} → events: {', '.join(sorted(events)) or 'none'}",
-                    f"Add the missing events: {', '.join(sorted(lacking))}." if lacking else "",
-                ))
+            checks.append(Check("Sale webhook registered", True, want_url or urls[0]))
 
     return checks
 
 
-def list_catalog(client: httpx.Client | None = None) -> list[str]:
-    """Print every store, product and variant with its ID.
-
-    Hunting for numeric IDs in the dashboard is the fiddliest part of the
-    setup, so ask the API instead and copy the numbers from here.
-    """
+def register_webhook(client: httpx.Client | None = None) -> str:
+    """Point Gumroad's sale + subscription webhooks at this deployment."""
     owns = client is None
     client = client or httpx.Client(timeout=20)
-    api_key = os.environ.get("LEMONSQUEEZY_API_KEY", "")
-    lines: list[str] = []
+    token = os.environ.get("GUMROAD_ACCESS_TOKEN", "")
+    secret = os.environ.get("GUMROAD_WEBHOOK_SECRET", "")
+    base = os.environ.get("CARDVAULT_BASE_URL", "").rstrip("/")
     try:
-        if not api_key:
-            return ["LEMONSQUEEZY_API_KEY is not set — create one at Settings → API."]
-        stores = client.get(f"{API_BASE}/stores", headers=_headers(api_key))
-        if stores.status_code != 200:
-            return [f"Could not list stores (HTTP {stores.status_code}); check the API key."]
-        for store in stores.json().get("data", []):
-            sid = store.get("id")
-            lines.append(f"Store {sid}: {store.get('attributes', {}).get('name', '?')}")
-            lines.append(f"  → LEMONSQUEEZY_STORE_ID={sid}")
-            prods = client.get(f"{API_BASE}/products", headers=_headers(api_key),
-                               params={"filter[store_id]": sid})
-            for prod in prods.json().get("data", []) if prods.status_code == 200 else []:
-                lines.append(f"  Product {prod.get('id')}: "
-                             f"{prod.get('attributes', {}).get('name', '?')}")
-                variants = client.get(f"{API_BASE}/variants", headers=_headers(api_key),
-                                      params={"filter[product_id]": prod.get("id")})
-                for v in variants.json().get("data", []) if variants.status_code == 200 else []:
-                    a = v.get("attributes", {})
-                    period = f"/{a['interval']}" if a.get("interval") else " one-time"
-                    hint = ""
-                    for env_key, want in EXPECTED.items():
-                        if a.get("price") == want["price"] and a.get("interval") == want["interval"]:
-                            hint = f"   ← looks like {env_key}={v.get('id')}"
-                    lines.append(f"    Variant {v.get('id')}: {a.get('name', '?')} "
-                                 f"{_money(a.get('price'))}{period}{hint}")
+        if not (token and secret and base):
+            return ("Set GUMROAD_ACCESS_TOKEN, GUMROAD_WEBHOOK_SECRET and "
+                    "CARDVAULT_BASE_URL first.")
+        post_url = f"{base}/api/billing/webhook?token={secret}"
+        results = []
+        for resource in ("sale", "cancellation", "subscription_ended"):
+            r = client.put(f"{API_BASE}/resource_subscriptions", headers=_headers(token),
+                           data={"resource_name": resource, "post_url": post_url})
+            ok = r.status_code < 300 and r.json().get("success", False)
+            results.append(f"  {resource}: {'registered' if ok else f'FAILED ({r.status_code})'}")
+        return f"Pointing Gumroad at {post_url}\n" + "\n".join(results)
     except httpx.HTTPError as exc:
-        lines.append(f"Could not reach Lemon Squeezy: {exc}")
+        return f"Could not reach Gumroad: {exc}"
     finally:
         if owns:
             client.close()
-    return lines
+
+
+def list_catalog(client: httpx.Client | None = None) -> list[str]:
+    """Print every product with its URL, price and the env var it belongs in."""
+    owns = client is None
+    client = client or httpx.Client(timeout=20)
+    token = os.environ.get("GUMROAD_ACCESS_TOKEN", "")
+    lines: list[str] = []
+    try:
+        if not token:
+            return ["GUMROAD_ACCESS_TOKEN is not set — create one at "
+                    "Gumroad → Settings → Advanced → Applications."]
+        r = client.get(f"{API_BASE}/products", headers=_headers(token))
+        if r.status_code != 200:
+            return [f"Could not list products (HTTP {r.status_code}); check the token."]
+        for p in r.json().get("products", []):
+            recurring = p.get("is_recurring_billing")
+            kind = "recurring" if recurring else "one-time"
+            hint = ""
+            for tier, want in EXPECTED.items():
+                if p.get("price") == want["price"] and bool(recurring) == want["recurring"]:
+                    hint = f"\n      → {TIER_URL_ENV[tier]}={p.get('short_url')}"
+            lines.append(f"  {p.get('name', '?')} — {_money(p.get('price'))} {kind}"
+                         f"{'' if p.get('published', True) else '  [UNPUBLISHED]'}"
+                         f"\n      {p.get('short_url', '?')}{hint}")
+    except httpx.HTTPError as exc:
+        lines.append(f"Could not reach Gumroad: {exc}")
+    finally:
+        if owns:
+            client.close()
+    return lines or ["No products found — create them in Gumroad first."]
 
 
 def main() -> int:
     if "--list" in sys.argv:
-        print("\nYour Lemon Squeezy catalog\n" + "=" * 26)
+        print("\nYour Gumroad products\n" + "=" * 21)
         for line in list_catalog():
             print(line)
         print()
+        return 0
+    if "--register-webhook" in sys.argv:
+        print(register_webhook())
         return 0
 
     checks = run_checks()
     print("\nCardVault billing configuration\n" + "=" * 34)
     failed = 0
     for c in checks:
-        mark = "OK  " if c.ok else "FAIL"
-        if c.ok and c.warnings:
-            mark = "WARN"
+        mark = "FAIL" if not c.ok else ("WARN" if c.warnings else "OK  ")
         print(f"[{mark}] {c.name}" + (f": {c.detail}" if c.detail else ""))
         for w in c.warnings:
             print(f"       ! {w}")
@@ -272,10 +254,8 @@ def main() -> int:
         if not c.ok:
             failed += 1
     print()
-    if failed:
-        print(f"{failed} problem(s) to fix before taking payments.")
-    else:
-        print("Configuration looks correct. Run a test-mode purchase to confirm end to end.")
+    print(f"{failed} problem(s) to fix before taking payments." if failed
+          else "Configuration looks correct. Make a test purchase to confirm end to end.")
     return 1 if failed else 0
 
 

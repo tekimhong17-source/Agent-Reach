@@ -34,20 +34,18 @@ services:
       - key: CARDVAULT_BASE_URL
         sync: false
 
-      # Lemon Squeezy credentials — prompted at deploy time, never committed.
+      # Gumroad credentials — prompted at deploy time, never committed.
       # Without these the app still runs; checkout returns 503 and the paywall
       # shows "Billing is not configured".
-      - key: LEMONSQUEEZY_API_KEY
+      - key: GUMROAD_ACCESS_TOKEN
         sync: false
-      - key: LEMONSQUEEZY_STORE_ID
+      - key: GUMROAD_YEARLY_URL
         sync: false
-      - key: LEMONSQUEEZY_VARIANT_ID
+      - key: GUMROAD_MONTHLY_URL
         sync: false
-      - key: LEMONSQUEEZY_ANNUAL_VARIANT_ID
+      - key: GUMROAD_LIFETIME_URL
         sync: false
-      - key: LEMONSQUEEZY_LIFETIME_VARIANT_ID
-        sync: false
-      - key: LEMONSQUEEZY_WEBHOOK_SECRET
+      - key: GUMROAD_WEBHOOK_SECRET
         sync: false
 
 # CARDVAULT_DEV is deliberately absent: it exposes a free-upgrade endpoint
