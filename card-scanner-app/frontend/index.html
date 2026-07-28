@@ -21,10 +21,25 @@
   </header>
 
   <!-- Auth -->
-  <section id="auth-view" class="card-panel">
+  <section id="auth-view">
+    <div id="hero">
+      <div class="hero-card" aria-hidden="true">
+        <span class="hero-chip"></span>
+        <span class="hero-digits">•••• •••• •••• 4242</span>
+        <span class="hero-lock">🔒</span>
+      </div>
+      <h2 class="hero-title">Every card you own, encrypted before we ever see it.</h2>
+      <p class="hero-sub">Scan a card with your camera, lock it with a passphrase only you
+         know, and pull it up anytime.</p>
+      <ul class="hero-points">
+        <li>Encrypted on your device — the server stores scrambled text</li>
+        <li>Camera scanning that never uploads an image</li>
+        <li>Two cards free, forever</li>
+      </ul>
+    </div>
+
+    <div class="card-panel">
     <h2>Sign in</h2>
-    <p class="muted">Your cards are encrypted in your browser with a passphrase only you know.
-       The server never sees a card number.</p>
     <form id="auth-form">
       <input type="email" id="auth-email" placeholder="Email" required>
       <input type="password" id="auth-password" placeholder="Password (8+ characters)" minlength="8" required>
@@ -34,6 +49,7 @@
       </div>
     </form>
     <p id="auth-error" class="error"></p>
+    </div>
   </section>
 
   <!-- Vault -->
@@ -45,6 +61,9 @@
       <button id="scan-btn">＋ Scan a card</button>
     </div>
     <p id="quota-note" class="muted"></p>
+    <p id="empty-vault" class="card-panel hidden">Your vault is empty. Tap
+       <strong>Scan a card</strong> — it takes about ten seconds, and the number never
+       leaves this device unencrypted.</p>
     <ul id="card-list"></ul>
 
     <div id="paywall" class="card-panel hidden">
@@ -63,10 +82,12 @@
         <li><strong>The same zero-knowledge encryption</strong> — Pro doesn't unlock your data
             for us. We still can't read a single card, and we never will be able to.</li>
       </ul>
-      <p class="pw-price">$19/year or $2.99/month — cancel anytime. Your first
-         <span class="pw-limit">2</span> cards stay free forever.</p>
-      <div class="row">
-        <button id="upgrade-btn">Unlock unlimited cards</button>
+      <p class="pw-price">$19 a year — about $1.58 a month, and 47% less than
+         paying monthly. Cancel anytime; your first <span class="pw-limit">2</span>
+         cards stay free forever.</p>
+      <div class="pw-actions">
+        <button id="upgrade-btn">Yearly — $19<span class="pw-tag">save 47%</span></button>
+        <button id="monthly-btn" class="secondary">Monthly — $2.99</button>
         <button id="lifetime-btn" class="secondary">Lifetime — $39 once</button>
       </div>
       <p class="muted pw-smallprint">Launch offer: lifetime is pay-once, Pro forever.

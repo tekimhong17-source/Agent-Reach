@@ -42,7 +42,7 @@ class LoginRequest(BaseModel):
 
 
 class CheckoutRequest(BaseModel):
-    tier: str = Field(default="subscription", pattern="^(subscription|lifetime)$")
+    tier: str = Field(default="yearly", pattern="^(yearly|monthly|lifetime)$")
 
 
 class CardCreate(BaseModel):
@@ -161,24 +161,28 @@ def remove_card(card_id: int, user: dict[str, Any] = Depends(current_user)) -> d
 def checkout(
     body: CheckoutRequest | None = None, user: dict[str, Any] = Depends(current_user)
 ) -> dict[str, str]:
-    tier = body.tier if body else "subscription"
+    tier = body.tier if body else "yearly"
     if user["plan"] in PRO_PLANS:
         raise HTTPException(status_code=400, detail="Already on Pro")
     if not billing.is_configured():
         raise HTTPException(
             status_code=503,
-            detail="Billing is not configured (set LEMONSQUEEZY_API_KEY, "
-            "LEMONSQUEEZY_STORE_ID and LEMONSQUEEZY_VARIANT_ID)",
+            detail="Billing is not configured (set GUMROAD_ACCESS_TOKEN)",
         )
-    variant = None
-    if tier == "lifetime":
-        variant = os.environ.get("LEMONSQUEEZY_LIFETIME_VARIANT_ID")
-        if not variant:
-            raise HTTPException(
-                status_code=503,
-                detail="Lifetime tier is not configured (set LEMONSQUEEZY_LIFETIME_VARIANT_ID)",
-            )
-    return {"url": billing.create_checkout_session(user, variant_id=variant)}
+    env_key = billing.TIER_URL_ENV[tier]
+    if not os.environ.get(env_key):
+        raise HTTPException(
+            status_code=503,
+            detail=f"The {tier} plan is not configured (set {env_key})",
+        )
+    try:
+        return {"url": billing.create_checkout_session(user, tier=tier)}
+    except billing.BillingUnavailable as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Our payment provider isn't responding. Nothing was charged — "
+            "please try again in a moment.",
+        ) from exc
 
 
 @app.post("/api/billing/portal")
@@ -187,15 +191,27 @@ def billing_portal(user: dict[str, Any] = Depends(current_user)) -> dict[str, st
         raise HTTPException(status_code=503, detail="Billing is not configured")
     if not user.get("subscription_id"):
         raise HTTPException(status_code=400, detail="No billing profile for this account")
-    return {"url": billing.create_portal_session(user["subscription_id"])}
+    try:
+        return {"url": billing.create_portal_session(user["subscription_id"])}
+    except billing.BillingUnavailable as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Our payment provider isn't responding. Please try again in a moment.",
+        ) from exc
 
 
 @app.post("/api/billing/webhook")
 async def billing_webhook(request: Request) -> dict[str, str]:
-    payload = await request.body()
-    signature = request.headers.get("x-signature", "")
+    # Gumroad pings are form-encoded, with the shared secret in the query
+    # string (the ping URL you configure ends in ?token=...).
+    form = {k: str(v) for k, v in (await request.form()).items()}
+    token = request.query_params.get("token", "")
     try:
-        return billing.handle_webhook(payload, signature)
+        return billing.handle_webhook(form, token)
+    except billing.BillingUnavailable as exc:
+        # Could not reach Gumroad to verify the sale. Answer 5xx so Gumroad
+        # retries rather than dropping a real purchase on the floor.
+        raise HTTPException(status_code=503, detail="verification unavailable") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

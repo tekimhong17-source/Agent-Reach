@@ -2,9 +2,9 @@
 
 A self-contained web app that lets people **scan their payment cards with the
 device camera, validate them, and store them in an encrypted personal vault** —
-monetized with a freemium paywall (free: 2 cards, Pro: unlimited via Lemon
-Squeezy, a merchant of record that works for founders in countries Stripe
-doesn't support).
+monetized with a freemium paywall (free: 2 cards, Pro: unlimited via Gumroad,
+a merchant of record that pays out to founders in countries Stripe doesn't
+support — including the Philippines).
 
 > This app lives in its own directory and is independent of the Agent Reach
 > package — nothing here imports from or modifies `agent_reach/`.
@@ -18,7 +18,7 @@ camera → OCR (tesseract.js)               auth (PBKDF2 passwords,
       → Luhn validation                        bearer session tokens)
       → brand detection                   encrypted blob storage
       → AES-256-GCM encryption   ──────►  paywall enforcement (402)
-        (passphrase-derived key)          Lemon Squeezy checkout + webhooks
+        (passphrase-derived key)          Gumroad checkout + webhooks
 ```
 
 ### Security model (the point of the app)
@@ -47,17 +47,24 @@ HTTPS only and review PCI-DSS SAQ A guidance.
 ### Paywall
 
 - Free plan: **2 cards** (configurable via `CARDVAULT_FREE_LIMIT`).
-- Pro plan: unlimited cards — $19/year or $2.99/month as a Lemon Squeezy
-  subscription, or $39 one-time for the lifetime plan (Lemon Squeezy is the
-  merchant of record, so it also handles global sales tax/VAT).
+- Pro plan: unlimited cards, sold as three explicit choices — **$19/year**
+  (the default and the one the paywall leads with), $2.99/month, or $39
+  one-time for the lifetime plan. Gumroad is the merchant of record, so it
+  also handles global sales tax/VAT.
+- Annual is the default deliberately: the per-transaction fee takes ~22% of a
+  $2.99 monthly charge but only ~7.6% of a $19 annual one.
 - Enforcement is **server-side**: the 3rd card on a free plan returns HTTP
   `402 Payment Required`, and the UI shows the upgrade panel.
-- Upgrades flow through Lemon Squeezy checkout; the `subscription_created`
-  webhook flips the user to `pro`. `subscription_cancelled` is deliberately
-  ignored (the customer paid through the period), and `subscription_expired`
-  downgrades them back to `free` at period end. An `order_created` for the
-  lifetime variant grants the `lifetime` plan (one-time payment, never
-  downgraded); all other orders are ignored.
+- Upgrades flow through Gumroad checkout. The buyer's `user_id` rides along
+  in the checkout URL and returns in the webhook's `url_params`, which is how
+  a payment is tied to an account.
+- **Webhooks are verified by calling Gumroad back.** A ping is only acted on
+  if `GET /v2/sales/{id}` confirms the sale exists in your account, so a
+  forged POST cannot grant anyone Pro. A shared `?token=` secret rejects
+  random traffic before that callback.
+- A cancellation is deliberately ignored (the customer paid through the
+  period); only a subscription actually ending downgrades to `free`. A sale of
+  the lifetime product grants `lifetime`, which is never downgraded.
 
 ## Running it
 
@@ -72,29 +79,41 @@ uvicorn backend.main:app --reload
 Camera access requires a secure context: `localhost` works out of the box;
 any other host must be HTTPS.
 
-### Lemon Squeezy setup (for the paywall)
+### Gumroad setup (for the paywall)
 
-1. Create a store at lemonsqueezy.com, add a subscription product ("CardVault
-   Pro") and note the **variant ID** of its monthly price.
-2. Create an API key under Settings → API.
-3. Add a webhook under Settings → Webhooks pointing at
-   `https://yourdomain.com/api/billing/webhook`, subscribed to
-   `subscription_created`, `subscription_expired` and `order_created`, and
-   choose a signing secret.
+Create **three products** in Gumroad — there are no numeric IDs to hunt for,
+you copy each product's URL:
+
+1. "CardVault Pro Yearly" — **$19, recurring, yearly**
+2. "CardVault Pro Monthly" — **$2.99, recurring, monthly**
+3. "CardVault Pro Lifetime" — **$39, one-time** (not a subscription)
+
+Then create an access token at Gumroad → Settings → Advanced → Applications.
 
 ```bash
-export LEMONSQUEEZY_API_KEY=...
-export LEMONSQUEEZY_STORE_ID=...          # numeric store ID
-export LEMONSQUEEZY_VARIANT_ID=...        # variant ID of the Pro subscription
-export LEMONSQUEEZY_LIFETIME_VARIANT_ID=... # variant ID of the lifetime product (optional)
-export LEMONSQUEEZY_WEBHOOK_SECRET=...    # the signing secret you chose
+export GUMROAD_ACCESS_TOKEN=...
+export GUMROAD_YEARLY_URL=https://yourshop.gumroad.com/l/...
+export GUMROAD_MONTHLY_URL=https://yourshop.gumroad.com/l/...
+export GUMROAD_LIFETIME_URL=https://yourshop.gumroad.com/l/...   # optional
+export GUMROAD_WEBHOOK_SECRET=...        # any long random string you invent
 export CARDVAULT_BASE_URL=http://localhost:8000
 ```
 
-Use the store's **test mode** for end-to-end checkout testing before launch.
-Without Lemon Squeezy keys the app still runs — checkout returns 503 and, if
-you set `CARDVAULT_DEV=1`, a `POST /api/billing/dev-upgrade` endpoint lets
-you exercise the Pro path locally.
+Then point Gumroad's webhooks at this deployment and verify everything:
+
+```bash
+python -m backend.check_billing --list              # show your products + the env var for each
+python -m backend.check_billing --register-webhook  # register sale/cancellation/ended hooks
+python -m backend.check_billing                     # verify the whole setup
+```
+
+The checker asks Gumroad directly whether the token works, each product URL
+exists with the advertised price and recurrence, and the webhook points at
+this deployment. It is read-only.
+
+Without a Gumroad token the app still runs — checkout returns 503 and, if you
+set `CARDVAULT_DEV=1`, a `POST /api/billing/dev-upgrade` endpoint lets you
+exercise the Pro path locally.
 
 ## Tests
 
@@ -105,8 +124,12 @@ pytest tests/ -v
 
 Covers registration/login/logout, session invalidation, per-user card
 isolation, the plaintext-PAN rejection safety net, free-limit enforcement
-(402), Pro bypass, webhook signature verification, and the full subscription
-lifecycle (created → pro, cancelled → still pro, expired → free).
+(402), Pro bypass, webhook token + sale verification, the full subscription
+lifecycle (sale → pro, cancelled → still pro, ended → free), the guarantee
+that a **forged webhook cannot grant access** because Gumroad must confirm the
+sale, and the billing-configuration checker (wrong prices, lifetime
+misconfigured as a subscription, unpublished products, webhook pointing at
+the wrong host).
 
 ## API
 
@@ -119,9 +142,9 @@ lifecycle (created → pro, cancelled → still pro, expired → free).
 | GET | `/api/cards` | List encrypted cards |
 | POST | `/api/cards` | Store an encrypted card (402 at free limit) |
 | DELETE | `/api/cards/{id}` | Delete a card |
-| POST | `/api/billing/checkout` | Start Lemon Squeezy checkout for Pro |
-| POST | `/api/billing/portal` | Open the Lemon Squeezy customer portal (self-serve cancel) |
-| POST | `/api/billing/webhook` | Lemon Squeezy webhook (HMAC signature-verified) |
+| POST | `/api/billing/checkout` | Start checkout; body `{"tier": "yearly"\|"monthly"\|"lifetime"}`, defaults to `yearly` |
+| POST | `/api/billing/portal` | Link to Gumroad subscription management |
+| POST | `/api/billing/webhook` | Gumroad ping (`?token=` secret + sale verified via the API) |
 
-The "Manage billing" button fetches the signed customer-portal URL from the
-user's subscription, so cancellations and card updates are fully self-serve.
+Gumroad subscribers manage or cancel from their Gumroad library and from the
+link in their receipt email, so cancellation stays self-serve.

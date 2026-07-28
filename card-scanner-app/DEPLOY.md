@@ -25,11 +25,11 @@ moves to Postgres.
    |---|---|
    | `CARDVAULT_DB` | `/data/cardvault.db` |
    | `CARDVAULT_BASE_URL` | the public URL you are actually browsing (see below) |
-   | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
-   | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
-   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the Pro subscription |
-   | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
-   | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
+   | `GUMROAD_ACCESS_TOKEN` | Gumroad → Settings → Advanced → Applications |
+   | `GUMROAD_YEARLY_URL` | product URL of the $19/year subscription |
+   | `GUMROAD_MONTHLY_URL` | product URL of the $2.99/month subscription |
+   | `GUMROAD_LIFETIME_URL` | product URL of the $39 one-time product (optional) |
+   | `GUMROAD_WEBHOOK_SECRET` | any long random string you invent |
 
    Do **not** set `CARDVAULT_DEV` — it exposes a free-upgrade endpoint meant
    for local testing only. Do **not** set `PORT`; Railway injects it and the
@@ -67,11 +67,11 @@ Manual Render setup, if you prefer clicking:
    |---|---|
    | `CARDVAULT_DB` | `/data/cardvault.db` |
    | `CARDVAULT_BASE_URL` | `https://trycardvault.com` |
-   | `LEMONSQUEEZY_API_KEY` | from Lemon Squeezy → Settings → API |
-   | `LEMONSQUEEZY_STORE_ID` | numeric store ID |
-   | `LEMONSQUEEZY_VARIANT_ID` | variant ID of the Pro subscription |
-   | `LEMONSQUEEZY_LIFETIME_VARIANT_ID` | variant ID of the lifetime product (optional) |
-   | `LEMONSQUEEZY_WEBHOOK_SECRET` | the signing secret you chose |
+   | `GUMROAD_ACCESS_TOKEN` | Gumroad → Settings → Advanced → Applications |
+   | `GUMROAD_YEARLY_URL` | product URL of the $19/year subscription |
+   | `GUMROAD_MONTHLY_URL` | product URL of the $2.99/month subscription |
+   | `GUMROAD_LIFETIME_URL` | product URL of the $39 one-time product (optional) |
+   | `GUMROAD_WEBHOOK_SECRET` | any long random string you invent |
 
    Do **not** set `CARDVAULT_DEV` in production — it exposes a free-upgrade
    endpoint meant for local testing only.
@@ -100,29 +100,58 @@ upgrade looks broken.
 4. Make `www` redirect to the apex so there is exactly one canonical URL.
 5. Update `CARDVAULT_BASE_URL` to `https://trycardvault.com`.
 
-## 3. Wire Lemon Squeezy to the live domain
+## 3. Wire Gumroad to the live domain
 
-1. Settings → Webhooks → endpoint `https://trycardvault.com/api/billing/webhook`,
-   events `subscription_created` + `subscription_expired` + `order_created`,
-   signing secret =
-   the `LEMONSQUEEZY_WEBHOOK_SECRET` you set above.
-2. Keep the store in **test mode** until the launch checklist passes.
+Create **three products** in Gumroad. There are no numeric IDs to find — you
+copy each product's URL.
 
-## 4. Launch checklist (run in Lemon Squeezy test mode)
+1. "CardVault Pro Yearly" — **$19, recurring, yearly**
+2. "CardVault Pro Monthly" — **$2.99, recurring, monthly**
+3. "CardVault Pro Lifetime" — **$39, one-time payment**, *not* a subscription.
+   This is the step most people get wrong; created as a subscription, buyers
+   get charged repeatedly for a "lifetime" plan.
 
-1. Fresh browser on your phone: register → scan/add 2 cards → paywall
-   appears → checkout with test card `4242 4242 4242 4242` → redirected back
-   → "finalizing your upgrade" resolves to a PRO badge → add a 3rd card.
-2. Webhook delivery log in Lemon Squeezy shows 200s.
-3. "Manage billing" opens the customer portal; cancel the test subscription;
-   after the period expires the account drops to FREE and cards remain.
+Publish all three — an unpublished product cannot be bought.
+
+Then, with the environment variables set:
+
+```bash
+cd card-scanner-app
+python -m backend.check_billing --list              # products + the env var each belongs in
+python -m backend.check_billing --register-webhook  # point Gumroad at this deployment
+python -m backend.check_billing                     # verify everything
+```
+
+`--register-webhook` subscribes Gumroad's `sale`, `cancellation` and
+`subscription_ended` events to
+`https://trycardvault.com/api/billing/webhook?token=<your secret>`. Re-run it
+whenever the public URL changes — a webhook still pointing at an old
+deployment means purchases never grant access.
+
+## 4. Launch checklist
+
+Gumroad automatically treats a purchase by the product's creator as a **test
+purchase** — it shows "your payment method will not be charged" at checkout —
+so you can walk the whole flow signed in as yourself without moving money. (A
+100% off discount code works too, if you want to test as someone else.)
+
+1. `python -m backend.check_billing` reports no failures.
+2. Fresh browser on your phone: register → add 2 cards → paywall appears →
+   click "Yearly — $19" → Gumroad checkout opens → complete it (it will say
+   "will not be charged") → back on the site, "finalizing your upgrade"
+   resolves to a PRO badge → add a 3rd card.
+3. Repeat for the lifetime product; the badge should read LIFETIME.
 4. Camera scan works over HTTPS on a real phone (getUserMedia requires it).
-5. Flip the store to live mode, submit it for activation review, and repeat
-   step 1 once with a real card. Refund yourself from the dashboard.
-
-6. Prove persistence before launch: add a card, redeploy the service, log
-   back in. If the card is still there, the volume is mounted correctly. If
-   it vanished, `CARDVAULT_DB` is not on the volume — fix that first.
+5. Check every product is priced in the **same currency** as the paywall
+   quotes (USD). A product created in another currency shows buyers a
+   different number than the button they clicked;
+   `python -m backend.check_billing` flags this.
+6. Prove persistence: add a card, redeploy the service, log back in. If the
+   card is still there, the volume is mounted correctly. If it vanished,
+   `CARDVAULT_DB` is not on the volume — fix that before launch.
+7. Ask someone else to buy one plan with a real card to confirm the live
+   path — your own purchases are always test purchases. Refund them
+   afterwards from Gumroad.
 
 ## Invariants for any other host (Fly.io, Koyeb, a VPS)
 

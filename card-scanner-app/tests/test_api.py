@@ -182,22 +182,22 @@ def test_checkout_unconfigured_returns_503(client):
 
 
 def _configure_billing(monkeypatch):
-    monkeypatch.setenv("LEMONSQUEEZY_API_KEY", "lsq_test_dummy")
-    monkeypatch.setenv("LEMONSQUEEZY_STORE_ID", "1")
-    monkeypatch.setenv("LEMONSQUEEZY_VARIANT_ID", "1")
-    monkeypatch.setenv("LEMONSQUEEZY_LIFETIME_VARIANT_ID", "99")
-    monkeypatch.setenv("LEMONSQUEEZY_WEBHOOK_SECRET", "whsecret")
+    monkeypatch.setenv("GUMROAD_ACCESS_TOKEN", "gum_test_token")
+    monkeypatch.setenv("GUMROAD_MONTHLY_URL", "https://shop.gumroad.com/l/cv-monthly")
+    monkeypatch.setenv("GUMROAD_YEARLY_URL", "https://shop.gumroad.com/l/cv-yearly")
+    monkeypatch.setenv("GUMROAD_LIFETIME_URL", "https://shop.gumroad.com/l/cv-lifetime")
+    monkeypatch.setenv("GUMROAD_WEBHOOK_SECRET", "whsecret")
 
 
-def _signed_webhook(client, event: dict):
-    import hashlib
-    import hmac as hmac_mod
+def _stub_sale(monkeypatch, sale: dict | None):
+    """Stand in for the callback Gumroad makes us do to verify a sale."""
+    import backend.billing as billing_mod
 
-    payload = json.dumps(event).encode()
-    signature = hmac_mod.new(b"whsecret", payload, hashlib.sha256).hexdigest()
-    return client.post(
-        "/api/billing/webhook", content=payload, headers={"x-signature": signature}
-    )
+    monkeypatch.setattr(billing_mod, "verify_sale", lambda _sid: sale)
+
+
+def _ping(client, form: dict, token: str = "whsecret"):
+    return client.post(f"/api/billing/webhook?token={token}", data=form)
 
 
 def test_portal_unconfigured_returns_503(client):
@@ -215,85 +215,84 @@ def test_portal_without_billing_profile_returns_400(client, monkeypatch):
 
 
 def test_webhook_without_secret_rejected(client):
-    res = client.post(
-        "/api/billing/webhook", content=b"{}", headers={"x-signature": "bogus"}
-    )
+    res = client.post("/api/billing/webhook?token=anything", data={"sale_id": "s1"})
     assert res.status_code == 400
-
-
-def test_webhook_bad_signature_rejected(client, monkeypatch):
-    _configure_billing(monkeypatch)
-    res = client.post(
-        "/api/billing/webhook", content=b"{}", headers={"x-signature": "deadbeef"}
-    )
-    assert res.status_code == 400
-    assert "signature" in res.json()["detail"]
 
 
 def test_webhook_subscription_lifecycle(client, monkeypatch):
     _configure_billing(monkeypatch)
     token = register(client)
+    _stub_sale(monkeypatch, {"product_permalink_short": "cv-yearly",
+                             "subscription_id": "sub_42"})
 
-    # subscription_created with our user_id in custom_data → Pro
-    res = _signed_webhook(client, {
-        "meta": {"event_name": "subscription_created", "custom_data": {"user_id": "1"}},
-        "data": {"type": "subscriptions", "id": "sub_42", "attributes": {}},
-    })
+    # a verified yearly sale → Pro
+    res = _ping(client, {"sale_id": "s1", "url_params[user_id]": "1",
+                         "subscription_id": "sub_42"})
     assert res.status_code == 200 and res.json()["status"] == "upgraded"
     assert client.get("/api/me", headers=auth(token)).json()["plan"] == "pro"
 
-    # subscription_cancelled is ignored: paid through the period, access stays
-    res = _signed_webhook(client, {
-        "meta": {"event_name": "subscription_cancelled"},
-        "data": {"type": "subscriptions", "id": "sub_42", "attributes": {}},
-    })
+    # a cancellation is ignored: paid through the period, access stays
+    res = _ping(client, {"subscription_id": "sub_42", "cancelled": "true"})
     assert res.json()["status"] == "ignored"
     assert client.get("/api/me", headers=auth(token)).json()["plan"] == "pro"
 
-    # subscription_expired at period end → back to free
-    res = _signed_webhook(client, {
-        "meta": {"event_name": "subscription_expired"},
-        "data": {"type": "subscriptions", "id": "sub_42", "attributes": {}},
-    })
+    # the subscription actually ending → back to free
+    res = _ping(client, {"subscription_id": "sub_42",
+                         "subscription_ended_at": "2026-08-01T00:00:00Z"})
     assert res.json()["status"] == "downgraded"
     assert client.get("/api/me", headers=auth(token)).json()["plan"] == "free"
 
 
-def test_lifetime_order_grants_lifetime_plan(client, monkeypatch):
+def test_forged_webhook_cannot_grant_access(client, monkeypatch):
+    """The decisive guarantee: Gumroad must confirm the sale, or nothing happens."""
     _configure_billing(monkeypatch)
     token = register(client)
+    _stub_sale(monkeypatch, None)  # Gumroad: "no such sale"
 
-    res = _signed_webhook(client, {
-        "meta": {"event_name": "order_created", "custom_data": {"user_id": "1"}},
-        "data": {
-            "type": "orders", "id": "777",
-            "attributes": {"first_order_item": {"variant_id": 99}},
-        },
-    })
-    assert res.status_code == 200 and res.json()["status"] == "lifetime"
-    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "lifetime"
-
-    # lifetime bypasses the free limit
-    for i in range(3):
-        res = client.post(
-            "/api/cards", json=dict(ENCRYPTED_CARD, label=f"Card {i}"), headers=auth(token)
-        )
-        assert res.status_code == 201
+    res = _ping(client, {"sale_id": "made-up", "url_params[user_id]": "1"})
+    assert res.status_code == 400
+    assert "could not be verified" in res.json()["detail"]
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "free"
 
 
-def test_subscription_first_invoice_order_is_ignored(client, monkeypatch):
+def test_webhook_with_wrong_token_rejected(client, monkeypatch):
+    _configure_billing(monkeypatch)
+    res = _ping(client, {"sale_id": "s1"}, token="not-the-secret")
+    assert res.status_code == 400
+
+
+def test_sale_of_unrelated_product_ignored(client, monkeypatch):
     _configure_billing(monkeypatch)
     token = register(client)
-
-    res = _signed_webhook(client, {
-        "meta": {"event_name": "order_created", "custom_data": {"user_id": "1"}},
-        "data": {
-            "type": "orders", "id": "778",
-            "attributes": {"first_order_item": {"variant_id": 1}},
-        },
-    })
+    _stub_sale(monkeypatch, {"product_permalink_short": "some-other-ebook"})
+    res = _ping(client, {"sale_id": "s9", "url_params[user_id]": "1"})
     assert res.json()["status"] == "ignored"
     assert client.get("/api/me", headers=auth(token)).json()["plan"] == "free"
+
+
+def test_lifetime_sale_grants_lifetime(client, monkeypatch):
+    _configure_billing(monkeypatch)
+    token = register(client)
+    _stub_sale(monkeypatch, {"product_permalink_short": "cv-lifetime"})
+    res = _ping(client, {"sale_id": "s2", "url_params[user_id]": "1"})
+    assert res.json()["status"] == "lifetime"
+    assert client.get("/api/me", headers=auth(token)).json()["plan"] == "lifetime"
+
+
+def test_unverifiable_sale_when_gumroad_is_down_returns_503(client, monkeypatch):
+    """Gumroad retries on 5xx, so an outage must not silently drop a purchase."""
+    import backend.billing as billing_mod
+    _configure_billing(monkeypatch)
+    register(client)
+
+    def boom(_sid):
+        raise billing_mod.BillingUnavailable("connection refused")
+
+    monkeypatch.setattr(billing_mod, "verify_sale", boom)
+    res = _ping(client, {"sale_id": "s1", "url_params[user_id]": "1"})
+    assert res.status_code == 503
+
+
 
 
 def test_checkout_invalid_tier_rejected(client):
@@ -302,3 +301,58 @@ def test_checkout_invalid_tier_rejected(client):
         "/api/billing/checkout", json={"tier": "weekly"}, headers=auth(token)
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "tier,env_key",
+    [
+        ("yearly", "GUMROAD_YEARLY_URL"),
+        ("monthly", "GUMROAD_MONTHLY_URL"),
+        ("lifetime", "GUMROAD_LIFETIME_URL"),
+    ],
+)
+def test_checkout_reports_the_unconfigured_tier(client, monkeypatch, tier, env_key):
+    """Each plan names the exact env var it needs, rather than failing vaguely."""
+    _configure_billing(monkeypatch)
+    monkeypatch.delenv(env_key, raising=False)
+    token = register(client)
+    res = client.post("/api/billing/checkout", json={"tier": tier}, headers=auth(token))
+    assert res.status_code == 503
+    assert env_key in res.json()["detail"]
+
+
+def test_checkout_url_carries_user_id_and_email(client, monkeypatch):
+    """user_id must ride along, or a payment cannot be tied to an account."""
+    _configure_billing(monkeypatch)
+    token = register(client)
+    url = client.post("/api/billing/checkout", json={"tier": "yearly"},
+                      headers=auth(token)).json()["url"]
+    assert url.startswith("https://shop.gumroad.com/l/cv-yearly?")
+    assert "user_id=1" in url and "user%40example.com" in url
+
+
+def test_upstream_failure_becomes_502_not_500(client, monkeypatch):
+    """A Lemon Squeezy outage must not surface as a raw 500 to a buyer."""
+    import backend.billing as billing_mod
+    import backend.main as main_mod
+
+    _configure_billing(monkeypatch)
+    token = register(client)
+
+    def boom(*_a, **_kw):
+        raise billing_mod.BillingUnavailable("connection refused")
+
+    monkeypatch.setattr(main_mod.billing, "create_checkout_session", boom)
+    res = client.post("/api/billing/checkout", json={"tier": "yearly"}, headers=auth(token))
+    assert res.status_code == 502
+    assert "Nothing was charged" in res.json()["detail"]
+
+
+def test_checkout_defaults_to_yearly(client, monkeypatch):
+    """No body at all must mean the annual plan, not the monthly one."""
+    _configure_billing(monkeypatch)
+    monkeypatch.delenv("GUMROAD_YEARLY_URL", raising=False)
+    token = register(client)
+    res = client.post("/api/billing/checkout", headers=auth(token))
+    assert res.status_code == 503
+    assert "yearly" in res.json()["detail"]
