@@ -100,12 +100,21 @@
     for (const card of cards) {
       const li = document.createElement("li");
       li.className = "card-item";
+      // Brand drives an accent stripe, so a full vault reads at a glance.
+      li.dataset.brand = String(card.brand || "").toLowerCase().replace(/\s+/g, "");
       li.innerHTML = `
-        <span class="card-brand">${card.brand}</span>
-        <span class="card-label"></span>
-        <span class="card-last4">•••• ${card.last4}</span>
-        <button class="ghost reveal">Reveal</button>
-        <button class="ghost danger delete">Delete</button>`;
+        <span class="card-chip" aria-hidden="true"></span>
+        <span class="card-text">
+          <span class="card-label"></span>
+          <span class="card-meta-line">
+            <span class="card-brand">${card.brand}</span>
+            <span class="card-last4">•••• ${card.last4}</span>
+          </span>
+        </span>
+        <span class="card-actions">
+          <button class="ghost reveal">Reveal</button>
+          <button class="ghost danger delete">Delete</button>
+        </span>`;
       li.querySelector(".card-label").textContent = card.label;
       li.querySelector(".reveal").addEventListener("click", () => openReveal(card));
       li.querySelector(".delete").addEventListener("click", async () => {
@@ -116,6 +125,7 @@
       list.appendChild(li);
     }
 
+    $("empty-vault").classList.toggle("hidden", cards.length > 0);
     const atLimit = !isPro(me.plan) && cards.length >= me.free_limit;
     $("paywall").classList.toggle("hidden", !atLimit);
     $("quota-note").textContent = isPro(me.plan)
