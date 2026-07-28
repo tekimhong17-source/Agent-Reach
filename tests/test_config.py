@@ -56,7 +56,12 @@ class TestConfig:
         tmp_config.set("exa_api_key", "test-key")
         assert tmp_config.is_configured("exa_search")
 
-    def test_get_configured_features(self, tmp_config):
+    def test_get_configured_features(self, tmp_config, monkeypatch):
+        # get() falls back to env vars, so a real GITHUB_TOKEN/GROQ_API_KEY in the
+        # developer's shell would otherwise show up as a configured feature here.
+        for keys in Config.FEATURE_REQUIREMENTS.values():
+            for key in keys:
+                monkeypatch.delenv(key.upper(), raising=False)
         features = tmp_config.get_configured_features()
         assert isinstance(features, dict)
         assert "exa_search" in features
