@@ -29,6 +29,33 @@ jobs:
         run: |
           pytest -q
 
+  # card-scanner-app is a self-contained web app that shares this repo but not
+  # its dependencies, so it gets its own job rather than pulling fastapi and
+  # httpx into Agent Reach's dev extra. Without this job the app's 65 tests
+  # would never run in CI at all.
+  card-scanner-app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: card-scanner-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install app and test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          pytest -q
+
   # Editable installs (-e) never exercise wheel packaging, so a broken wheel
   # can pass tests and still fail every real `pip install` from source.
   # This job builds the actual wheel and installs it into a clean venv.
